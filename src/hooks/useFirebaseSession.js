@@ -8,6 +8,7 @@ import {
   signOut,
 } from 'firebase/auth'
 import { auth } from '../services/firebase/firebaseClient'
+import { getMarksOnce, getProfileOnce, migrateAnonymousData } from '../services/firebase/userData'
 
 const provider = new GoogleAuthProvider()
 provider.setCustomParameters({ prompt: 'select_account' })
@@ -61,18 +62,50 @@ export function useFirebaseSession() {
     setIsAuthActionLoading(true)
 
     try {
+      // Guardamos los datos de la sesión anónima ANTES de vincular: si el email
+      // de Google ya estaba registrado, los migramos a la cuenta existente para no perderlos.
+      const anonUid = auth.currentUser?.isAnonymous ? auth.currentUser.uid : null
+      let anonProfile = null
+      let anonMarks = []
+      if (anonUid) {
+        try {
+          anonProfile = await getProfileOnce(anonUid)
+          anonMarks = await getMarksOnce(anonUid)
+        } catch {
+          anonProfile = null
+          anonMarks = []
+        }
+      }
+
+      let alreadyRegistered = false
       if (auth.currentUser?.isAnonymous) {
         try {
           await linkWithPopup(auth.currentUser, provider)
         } catch (linkError) {
-          if (linkError?.code !== 'auth/credential-already-in-use') throw linkError
+          if (
+            linkError?.code !== 'auth/credential-already-in-use' &&
+            linkError?.code !== 'auth/account-exists-with-different-credential'
+          ) {
+            throw linkError
+          }
+          // El email ya tiene cuenta: entramos en ella y trasladamos los datos anónimos.
+          alreadyRegistered = true
           await signInWithPopup(auth, provider)
+          const targetUid = auth.currentUser?.uid
+          if (targetUid && (anonProfile || anonMarks.length > 0)) {
+            try {
+              await migrateAnonymousData(anonProfile, anonMarks, targetUid)
+            } catch {
+              // Si la migración falla, la sesión queda iniciada igualmente.
+            }
+          }
         }
       } else {
         await signInWithPopup(auth, provider)
       }
 
       setError('')
+      return { alreadyRegistered }
     } catch (authError) {
       setError(getGoogleErrorMessage(authError?.code))
       throw new Error('google-auth-error', { cause: authError })

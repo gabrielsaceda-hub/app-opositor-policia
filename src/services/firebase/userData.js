@@ -4,6 +4,7 @@ import {
   collectionGroup,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
@@ -152,6 +153,50 @@ export async function clearUserMarks(uid) {
 
 export async function deleteUserMark(uid, markId) {
   await deleteDoc(doc(db, 'users', uid, 'marks', markId))
+}
+
+// Lectura puntual del perfil (para migrar datos de sesión anónima al entrar con Google).
+export async function getProfileOnce(uid) {
+  const snap = await getDoc(doc(db, 'users', uid))
+  return snap.exists() ? snap.data() : null
+}
+
+// Lectura puntual de marcas (para migrar datos de sesión anónima al entrar con Google).
+export async function getMarksOnce(uid) {
+  const marksRef = collection(db, 'users', uid, 'marks')
+  const marksSnapshot = await getDocs(query(marksRef, orderBy('createdAt', 'desc')))
+  return marksSnapshot.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }))
+}
+
+// Copia perfil (solo si la cuenta destino no tiene) y marcas a la cuenta destino.
+// Se usa cuando el email de Google ya estaba registrado: la sesión anónima previa
+// no se pierde, se traslada a la cuenta existente.
+export async function migrateAnonymousData(anonProfile, anonMarks, targetUid) {
+  let profileCopied = false
+  let marksCopied = 0
+
+  const targetProfile = await getProfileOnce(targetUid)
+  if (anonProfile && !targetProfile) {
+    // El email/rol/estado/plan y fechas son de la cuenta: no se migran, solo el perfil deportivo.
+    const profileData = { ...anonProfile }
+    delete profileData.email
+    delete profileData.role
+    delete profileData.status
+    delete profileData.plan
+    delete profileData.createdAt
+    delete profileData.lastLoginAt
+    await setDoc(doc(db, 'users', targetUid), { ...profileData, updatedAt: serverTimestamp() }, { merge: true })
+    profileCopied = true
+  }
+
+  for (const mark of anonMarks) {
+    const markData = { ...mark }
+    delete markData.id
+    await addDoc(collection(db, 'users', targetUid, 'marks'), { ...markData, migrated: true })
+    marksCopied += 1
+  }
+
+  return { profileCopied, marksCopied }
 }
 
 export function subscribeAllMarks(onChange) {

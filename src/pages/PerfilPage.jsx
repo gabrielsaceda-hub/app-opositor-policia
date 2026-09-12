@@ -209,8 +209,12 @@ function ProfilePage({
 
   const onGoogleLogin = async () => {
     try {
-      await onSignInWithGoogle()
-      setMessage('Sesión de Google iniciada. Tu perfil ya queda vinculado.')
+      const result = await onSignInWithGoogle()
+      if (result?.alreadyRegistered) {
+        setMessage('Este email ya estaba registrado. Hemos iniciado sesión en tu cuenta existente y recuperado tus datos.')
+      } else {
+        setMessage('Sesión de Google iniciada. Tu perfil ya queda vinculado.')
+      }
     } catch {
       setMessage('No se pudo iniciar sesión con Google.')
     }
@@ -303,6 +307,17 @@ function ProfilePage({
 
       <SectionCard title="Perfil y objetivo" subtitle="Define tus datos físicos y metas de prueba">
         <form className="space-y-4" onSubmit={onSubmit}>
+          <FormField label="Email (no se puede modificar)">
+            <input
+              className={`${inputClass} cursor-not-allowed opacity-70`}
+              type="email"
+              value={user?.email ?? ''}
+              placeholder={user?.isAnonymous ? 'Sin email (sesión anónima)' : ''}
+              disabled
+              readOnly
+            />
+          </FormField>
+
           <FormField label="Nombre">
             <input
               className={inputClass}
