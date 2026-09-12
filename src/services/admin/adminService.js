@@ -34,6 +34,7 @@ export function subscribeAllUsers(onChange, maxUsers = 500) {
           uid: d.id,
           nombre: data.nombre ?? '',
           email: data.email ?? '',
+          emailManual: Boolean(data.emailManual),
           role: data.role ?? 'user',
           status: data.status ?? 'activo',
           plan: data.plan ?? 'gratuito',
@@ -73,6 +74,13 @@ const ALLOWED_PLANS = ['gratuito', 'pro', 'club']
 export async function updateUserByAdmin(targetUid, patch) {
   const clean = {}
   if (patch.nombre !== undefined) clean.nombre = String(patch.nombre).slice(0, 80)
+  if (patch.email !== undefined) {
+    const email = String(patch.email).trim().slice(0, 120)
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('invalid-email')
+    clean.email = email
+    // Marca el email como fijado por admin para que el login no lo sobrescriba.
+    clean.emailManual = true
+  }
   if (ALLOWED_ROLES.includes(patch.role)) clean.role = patch.role
   if (ALLOWED_STATUS.includes(patch.status)) clean.status = patch.status
   if (ALLOWED_PLANS.includes(patch.plan)) clean.plan = patch.plan

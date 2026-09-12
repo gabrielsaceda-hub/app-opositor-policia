@@ -17,6 +17,23 @@ function UsersTable({ users, onView, onUpdate, onToggleStatus, onDelete, onSendE
   const [stravaFilter, setStravaFilter] = useState('todos')
   const [fromDate, setFromDate] = useState('')
   const [page, setPage] = useState(0)
+  const [emailDrafts, setEmailDrafts] = useState({})
+  const [emailMsg, setEmailMsg] = useState('')
+
+  const saveEmail = (u) => {
+    const draft = (emailDrafts[u.uid] ?? u.email ?? '').trim()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft)) {
+      setEmailMsg('Email no válido. No se ha guardado.')
+      return
+    }
+    setEmailMsg('')
+    setEmailDrafts((prev) => {
+      const next = { ...prev }
+      delete next[u.uid]
+      return next
+    })
+    onUpdate(u.uid, { email: draft })
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -58,6 +75,7 @@ function UsersTable({ users, onView, onUpdate, onToggleStatus, onDelete, onSendE
       </div>
 
       <p className="text-sm text-slate-500">{filtered.length} usuarios · página {page + 1} de {totalPages}</p>
+      {emailMsg ? <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700">{emailMsg}</p> : null}
 
       <div className="space-y-2">
         {pageItems.map((u) => (
@@ -73,6 +91,17 @@ function UsersTable({ users, onView, onUpdate, onToggleStatus, onDelete, onSendE
               <span className={`rounded-full px-3 py-1 text-xs font-bold ${u.status === 'activo' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
                 {u.status}
               </span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <input
+                className={inputClass}
+                type="email"
+                title="Email de contacto (solo editable por admin)"
+                value={emailDrafts[u.uid] ?? u.email ?? ''}
+                placeholder="Email de contacto"
+                onChange={(e) => setEmailDrafts((prev) => ({ ...prev, [u.uid]: e.target.value }))}
+              />
+              <button type="button" className="rounded-xl bg-brand-50 px-3 py-2 text-xs font-bold text-brand-900" onClick={() => saveEmail(u)}>Guardar email</button>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
               <select className={inputClass} value={u.role} onChange={(e) => onUpdate(u.uid, { role: e.target.value })}>

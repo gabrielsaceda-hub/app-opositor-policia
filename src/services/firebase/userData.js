@@ -74,7 +74,11 @@ export async function ensureUserMetadata(uid, { email = '', isAnonymous = false 
       if (!snap.exists()) {
         transaction.set(ref, { ...patch, role: 'user', status: 'activo', plan: 'gratuito', createdAt: serverTimestamp() })
       } else {
-        transaction.set(ref, patch, { merge: true })
+        // Si el admin fijó manualmente el email de contacto, el login no lo sobrescribe.
+        const data = snap.data()
+        const safePatch = { ...patch }
+        if (data.emailManual) delete safePatch.email
+        transaction.set(ref, safePatch, { merge: true })
       }
     })
     return
