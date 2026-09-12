@@ -1,0 +1,103 @@
+// Policía Nacional 2025 (según tablas facilitadas).
+// Se aplica baremo por rangos oficiales.
+
+export const policiaNacionalBaremos = {
+  'pn-circuito': {
+    tipo: 'rangos',
+    porSexo: {
+      Hombre: [
+        { puntos: 0, min: 11.7, max: Infinity },
+        { puntos: 1, min: 11.5, max: 11.6 },
+        { puntos: 2, min: 11.3, max: 11.4 },
+        { puntos: 3, min: 11.0, max: 11.2 },
+        { puntos: 4, min: 10.6, max: 10.9 },
+        { puntos: 5, min: 10.2, max: 10.5 },
+        { puntos: 6, min: 9.8, max: 10.1 },
+        { puntos: 7, min: 9.4, max: 9.7 },
+        { puntos: 8, min: 8.9, max: 9.3 },
+        { puntos: 9, min: 8.3, max: 8.8 },
+        { puntos: 10, min: -Infinity, max: 8.2 },
+      ],
+      Mujer: [
+        { puntos: 0, min: 12.8, max: Infinity },
+        { puntos: 1, min: 12.6, max: 12.7 },
+        { puntos: 2, min: 12.4, max: 12.5 },
+        { puntos: 3, min: 12.1, max: 12.3 },
+        { puntos: 4, min: 11.7, max: 12.0 },
+        { puntos: 5, min: 11.3, max: 11.6 },
+        { puntos: 6, min: 10.9, max: 11.2 },
+        { puntos: 7, min: 10.4, max: 10.8 },
+        { puntos: 8, min: 9.9, max: 10.3 },
+        { puntos: 9, min: 9.4, max: 9.8 },
+        { puntos: 10, min: -Infinity, max: 9.3 },
+      ],
+    },
+  },
+  'pn-dominadas': {
+    tipo: 'rangos',
+    porSexo: {
+      Hombre: [
+        { puntos: 0, min: 0, max: 4 },
+        { puntos: 1, min: 5, max: 5 },
+        { puntos: 2, min: 6, max: 6 },
+        { puntos: 3, min: 7, max: 7 },
+        { puntos: 4, min: 8, max: 9 },
+        { puntos: 5, min: 10, max: 11 },
+        { puntos: 6, min: 12, max: 13 },
+        { puntos: 7, min: 14, max: 14 },
+        { puntos: 8, min: 15, max: 15 },
+        { puntos: 9, min: 16, max: 16 },
+        { puntos: 10, min: 17, max: Infinity },
+      ],
+    },
+  },
+  'pn-suspension-barra': {
+    tipo: 'rangos',
+    porSexo: {
+      Mujer: [
+        { puntos: 0, min: 0, max: 35 },
+        { puntos: 1, min: 36, max: 40 },
+        { puntos: 2, min: 41, max: 45 },
+        { puntos: 3, min: 46, max: 51 },
+        { puntos: 4, min: 52, max: 56 },
+        { puntos: 5, min: 57, max: 62 },
+        { puntos: 6, min: 63, max: 69 },
+        { puntos: 7, min: 70, max: 77 },
+        { puntos: 8, min: 78, max: 85 },
+        { puntos: 9, min: 86, max: 94 },
+        { puntos: 10, min: 95, max: Infinity },
+      ],
+    },
+  },
+  'pn-1000': {
+    tipo: 'rangos',
+    porSexo: {
+      Hombre: [
+        { puntos: 0, min: 229, max: Infinity },
+        { puntos: 1, min: 223, max: 228 },
+        { puntos: 2, min: 217, max: 222 },
+        { puntos: 3, min: 211, max: 216 },
+        { puntos: 4, min: 205, max: 210 },
+        { puntos: 5, min: 199, max: 204 },
+        { puntos: 6, min: 193, max: 198 },
+        { puntos: 7, min: 187, max: 192 },
+        { puntos: 8, min: 181, max: 186 },
+        { puntos: 9, min: 175, max: 180 },
+        { puntos: 10, min: -Infinity, max: 174 },
+      ],
+      Mujer: [
+        { puntos: 0, min: 286, max: Infinity },
+        { puntos: 1, min: 277, max: 285 },
+        { puntos: 2, min: 268, max: 276 },
+        { puntos: 3, min: 259, max: 267 },
+        { puntos: 4, min: 250, max: 258 },
+        { puntos: 5, min: 241, max: 249 },
+        { puntos: 6, min: 232, max: 240 },
+        { puntos: 7, min: 223, max: 231 },
+        { puntos: 8, min: 214, max: 222 },
+        { puntos: 9, min: 205, max: 213 },
+        { puntos: 10, min: -Infinity, max: 204 },
+      ],
+    },
+  },
+}
