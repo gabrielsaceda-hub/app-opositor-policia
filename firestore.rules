@@ -10,7 +10,9 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      allow write: if request.auth != null && request.auth.uid == userId;
+      // El dueño escribe su perfil; el admin puede actualizar rol/estado/plan.
+      allow create, update: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow delete: if request.auth != null && (request.auth.uid == userId || isAdmin());
 
       match /marks/{markId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
@@ -21,6 +23,19 @@ service cloud.firestore {
 
     match /{path=**}/marks/{markId} {
       allow read, delete: if isAdmin();
+    }
+
+    // Avisos in-app: lectura pública (solo activos filtra el cliente), escritura solo admin.
+    match /announcements/{announcementId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Cola de emails para la extensión Trigger Email: solo el admin encola.
+    match /mail/{mailId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false;
     }
 
     match /publicRankings/{testId} {

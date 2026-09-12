@@ -41,6 +41,46 @@ export function subscribeProfile(uid, onChange) {
   })
 }
 
+// Suscripción ligera al doc de rol/estado del usuario actual (para RBAC).
+export function subscribeUserRole(uid, onChange) {
+  const profileRef = doc(db, 'users', uid)
+  return onSnapshot(profileRef, (snapshot) => {
+    const data = snapshot.exists() ? snapshot.data() : {}
+    onChange({
+      role: data.role ?? 'user',
+      status: data.status ?? 'activo',
+      plan: data.plan ?? 'gratuito',
+      email: data.email ?? '',
+    })
+  })
+}
+
+// Crea/actualiza metadatos de cuenta al iniciar sesión (email, createdAt, lastLoginAt).
+// No pisa el perfil deportivo: usa merge y solo rellena createdAt si no existe.
+export async function ensureUserMetadata(uid, { email = '', isAnonymous = false } = {}) {
+  const ref = doc(db, 'users', uid)
+  const patch = {
+    email: isAnonymous ? '' : email,
+    lastLoginAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }
+  if (!isAnonymous) {
+    // createdAt solo se fija la primera vez: lo intentamos con merge + campo si falta.
+    // Para no leer antes de escribir, usamos setDoc merge con createdAt solo si es nuevo
+    // mediante transacción ligera.
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(ref)
+      if (!snap.exists()) {
+        transaction.set(ref, { ...patch, role: 'user', status: 'activo', plan: 'gratuito', createdAt: serverTimestamp() })
+      } else {
+        transaction.set(ref, patch, { merge: true })
+      }
+    })
+    return
+  }
+  await setDoc(ref, { lastLoginAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true })
+}
+
 export function subscribeSavedMarks(uid, onChange) {
   const marksRef = collection(db, 'users', uid, 'marks')
   const marksQuery = query(marksRef, orderBy('createdAt', 'desc'))

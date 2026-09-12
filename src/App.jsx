@@ -6,7 +6,11 @@ import Sidebar from './components/layout/Sidebar'
 import Footer from './components/layout/Footer'
 import CookieConsent from './components/legal/CookieConsent'
 import { isAdminUser } from './config/admin'
+import { useAdminRole } from './hooks/useAdminRole'
+import { subscribeActiveAnnouncements } from './services/admin/adminService'
+import { ensureUserMetadata } from './services/firebase/userData'
 import InicioPage from './pages/InicioPage'
+import AdminPage from './pages/AdminPage'
 import CalculadoraPage from './pages/CalculadoraPage'
 import CalendarioPage from './pages/CalendarioPage'
 import EntrenadorPage from './pages/EntrenadorPage'
@@ -67,9 +71,14 @@ function App() {
   const [publicRankings, setPublicRankings] = useState([])
   const [dataError, setDataError] = useState('')
   const [isProfileReady, setIsProfileReady] = useState(false)
+  const [activeAnnouncements, setActiveAnnouncements] = useState([])
+  const { isAdmin, isLoading: isAdminLoading } = useAdminRole(user)
+  const visibleTabs = tabs.filter((t) => !t.adminOnly || isAdmin)
 
   useEffect(() => {
     if (!user?.uid) return undefined
+
+    ensureUserMetadata(user.uid, { email: user.email ?? '', isAnonymous: user.isAnonymous }).catch(() => {})
 
     let isActive = true
     const isAdmin = isAdminUser(user)
@@ -113,6 +122,11 @@ function App() {
   useEffect(() => {
     logAnalyticsEvent('page_view', { page_title: currentTab, page_location: window.location.href })
   }, [currentTab])
+
+  useEffect(() => {
+    const unsub = subscribeActiveAnnouncements(setActiveAnnouncements)
+    return unsub
+  }, [])
 
   const handleSaveProfile = async (nextProfile) => {
     if (!user?.uid) return
@@ -201,6 +215,10 @@ function App() {
 
     if (currentTab === 'sobre') return <SobreContactoPage />
     if (currentTab === 'privacidad') return <PrivacidadCookiesPage />
+    if (currentTab === 'admin') {
+      if (isAdminLoading) return <p className="text-sm text-slate-500">Verificando permisos…</p>
+      return <AdminPage isAdmin={isAdmin} onGoHome={() => changeTab('inicio')} />
+    }
 
     return (
       <PerfilPage
@@ -217,6 +235,7 @@ function App() {
         onClearMarks={handleClearMarks}
         onDeleteMark={handleDeleteMark}
         onDeleteAdminMark={handleDeleteAdminMark}
+        onGoAdmin={() => changeTab('admin')}
       />
     )
   }
@@ -231,8 +250,17 @@ function App() {
         isAdmin={isAdminUser(user)}
         onAccountClick={() => changeTab('perfil')}
       />
+      {activeAnnouncements.length > 0 ? (
+        <div className="space-y-2 bg-amber-50 px-5 py-3">
+          {activeAnnouncements.map((a) => (
+            <p key={a.id} className="text-sm font-bold text-amber-900">
+              {a.title}: <span className="font-semibold">{a.message}</span>
+            </p>
+          ))}
+        </div>
+      ) : null}
       <div className="flex flex-1 gap-4 overflow-hidden p-0 lg:p-5">
-        <Sidebar tabs={tabs} currentTab={currentTab} onChangeTab={changeTab} />
+        <Sidebar tabs={visibleTabs} currentTab={currentTab} onChangeTab={changeTab} />
         <PageContainer>
           {isAuthLoading || (!authError && !isProfileReady) ? (
             <p className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
@@ -249,7 +277,7 @@ function App() {
           <Footer onNavigate={changeTab} />
         </PageContainer>
       </div>
-      <BottomNav tabs={tabs} currentTab={currentTab} onChangeTab={changeTab} />
+      <BottomNav tabs={visibleTabs} currentTab={currentTab} onChangeTab={changeTab} />
       <CookieConsent onPrivacyClick={() => changeTab('privacidad')} />
     </main>
   )

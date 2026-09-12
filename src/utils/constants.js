@@ -9,6 +9,7 @@ export const navigationTabs = [
   { id: 'perfil', label: 'Perfil' },
   { id: 'sobre', label: 'Contacto' },
   { id: 'privacidad', label: 'Privacidad' },
+  { id: 'admin', label: 'Admin', adminOnly: true },
 ]
 
 export const cuerpos = [

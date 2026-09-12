@@ -43,6 +43,7 @@ function ProfilePage({
   onClearMarks,
   onDeleteMark,
   onDeleteAdminMark,
+  onGoAdmin,
 }) {
   const [form, setForm] = useState({
     nombre: profile?.nombre ?? '',
@@ -258,6 +259,9 @@ function ProfilePage({
 
       {isAdmin ? (
         <SectionCard title="Administración" subtitle={`Panel activo para ${ADMIN_EMAILS.join(' / ')}`}>
+          <AppButton type="button" onClick={onGoAdmin}>
+            Abrir Dashboard Superadmin
+          </AppButton>
           {adminMarks.length === 0 ? (
             <p className="text-sm text-slate-500">No hay marcas guardadas todavía.</p>
           ) : (
