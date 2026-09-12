@@ -1,4 +1,5 @@
 import { initializeApp } from 'firebase/app'
+import { getAnalytics, isSupported, logEvent } from 'firebase/analytics'
 import { getAuth } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 
@@ -13,6 +14,13 @@ const firebaseConfig = {
 }
 
 const app = initializeApp(firebaseConfig)
+const analyticsPromise = typeof window === 'undefined' ? Promise.resolve(null) : isSupported().then((ok) => (ok ? getAnalytics(app) : null))
 
 export const auth = getAuth(app)
 export const db = getFirestore(app)
+
+export async function logAnalyticsEvent(eventName, params = {}) {
+  const analytics = await analyticsPromise
+  if (!analytics) return
+  logEvent(analytics, eventName, params)
+}

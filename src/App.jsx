@@ -2,14 +2,23 @@ import { useEffect, useState } from 'react'
 import Header from './components/layout/Header'
 import BottomNav from './components/layout/BottomNav'
 import PageContainer from './components/layout/PageContainer'
+import Sidebar from './components/layout/Sidebar'
+import Footer from './components/layout/Footer'
+import CookieConsent from './components/legal/CookieConsent'
 import { isAdminUser } from './config/admin'
 import InicioPage from './pages/InicioPage'
 import CalculadoraPage from './pages/CalculadoraPage'
+import CalendarioPage from './pages/CalendarioPage'
 import EntrenadorPage from './pages/EntrenadorPage'
+import GuiaPage from './pages/GuiaPage'
+import NutricionPage from './pages/NutricionPage'
+import PrivacidadCookiesPage from './pages/PrivacidadCookiesPage'
 import RitmoBasePage from './pages/RitmoBasePage'
+import SobreContactoPage from './pages/SobreContactoPage'
 import PerfilPage from './pages/PerfilPage'
 import { useAppNavigation } from './hooks/useAppNavigation'
 import { useFirebaseSession } from './hooks/useFirebaseSession'
+import { logAnalyticsEvent } from './services/firebase/firebaseClient'
 import {
   addUserMark,
   clearUserMarks,
@@ -101,6 +110,10 @@ function App() {
     }
   }, [user])
 
+  useEffect(() => {
+    logAnalyticsEvent('page_view', { page_title: currentTab, page_location: window.location.href })
+  }, [currentTab])
+
   const handleSaveProfile = async (nextProfile) => {
     if (!user?.uid) return
 
@@ -169,17 +182,25 @@ function App() {
 
   const renderPage = () => {
     if (currentTab === 'inicio') return <InicioPage publicRankings={publicRankings} />
+    if (currentTab === 'guia') return <GuiaPage />
     if (currentTab === 'calculadora') {
       return <CalculadoraPage profile={profile} onSaveMark={handleSaveMark} />
     }
+
+    if (currentTab === 'calendario') return <CalendarioPage profile={profile} />
 
     if (currentTab === 'entrenador') {
       return <EntrenadorPage profile={profile} savedMarks={savedMarks} onGoProfile={() => changeTab('perfil')} />
     }
 
+    if (currentTab === 'nutricion') return <NutricionPage profile={profile} />
+
     if (currentTab === 'ritmo') {
       return <RitmoBasePage />
     }
+
+    if (currentTab === 'sobre') return <SobreContactoPage />
+    if (currentTab === 'privacidad') return <PrivacidadCookiesPage />
 
     return (
       <PerfilPage
@@ -203,27 +224,33 @@ function App() {
   const globalError = authError || dataError
 
   return (
-    <main className="mx-auto flex min-h-svh w-full max-w-md flex-col bg-slate-50 shadow-card">
+    <main className="mx-auto flex min-h-svh w-full max-w-6xl flex-col bg-slate-50 shadow-card">
       <Header
         appName="App Opositor Policía"
         user={user}
         isAdmin={isAdminUser(user)}
         onAccountClick={() => changeTab('perfil')}
       />
-      <PageContainer>
-        {isAuthLoading || (!authError && !isProfileReady) ? (
-          <p className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
-            Conectando con Firebase...
-          </p>
-        ) : (
-          renderPage()
-        )}
+      <div className="flex flex-1 gap-4 overflow-hidden p-0 lg:p-5">
+        <Sidebar tabs={tabs} currentTab={currentTab} onChangeTab={changeTab} />
+        <PageContainer>
+          {isAuthLoading || (!authError && !isProfileReady) ? (
+            <p className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+              Conectando con Firebase...
+            </p>
+          ) : (
+            renderPage()
+          )}
 
-        {globalError ? (
-          <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{globalError}</p>
-        ) : null}
-      </PageContainer>
+          {globalError ? (
+            <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{globalError}</p>
+          ) : null}
+
+          <Footer onNavigate={changeTab} />
+        </PageContainer>
+      </div>
       <BottomNav tabs={tabs} currentTab={currentTab} onChangeTab={changeTab} />
+      <CookieConsent onPrivacyClick={() => changeTab('privacidad')} />
     </main>
   )
 }

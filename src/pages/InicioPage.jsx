@@ -1,10 +1,13 @@
 import SectionCard from '../components/ui/SectionCard'
+import AdSlot from '../components/ads/AdSlot'
 import { getTestById } from '../data/tests'
 import { formatNormalizedMarkByTest } from '../utils/formatters'
 
 function InicioPage({ publicRankings = [] }) {
   return (
     <div className="space-y-4">
+      <AdSlot slot={import.meta.env.VITE_ADSENSE_SLOT_TOP || '1111111111'} />
+
       <SectionCard
         title="Bienvenido"
         subtitle="Calculadora de pruebas físicas para oposiciones policiales"
@@ -14,6 +17,22 @@ function InicioPage({ publicRankings = [] }) {
           actualizaciones.
         </p>
       </SectionCard>
+
+      <SectionCard title="Blog deportivo" subtitle="Rendimiento, recuperación y preparación inteligente">
+        <article className="space-y-3 text-sm leading-relaxed text-slate-700">
+          <p>
+            Preparar una oposición física no consiste solo en entrenar más. La mejora real llega cuando combinas control de cargas, descanso, técnica, nutrición y seguimiento de marcas. Esta app centraliza esos datos para que puedas tomar mejores decisiones semana a semana.
+          </p>
+          <p>
+            Usa el calendario para diferenciar sesiones planificadas y reales, registra sensaciones de esfuerzo y revisa si tu volumen semanal encaja con la fecha prevista de examen. Las recomendaciones no sustituyen a un entrenador sanitario o médico, pero ayudan a ordenar la preparación.
+          </p>
+          <p className="rounded-2xl bg-brand-50 p-3 font-semibold text-brand-900">
+            Consejo: registra al menos una marca de referencia cada 10-14 días. Evita probarte al máximo todos los días para no acumular fatiga innecesaria.
+          </p>
+        </article>
+      </SectionCard>
+
+      <AdSlot slot={import.meta.env.VITE_ADSENSE_SLOT_CONTENT || '2222222222'} />
 
       <SectionCard
         title="Ranking anónimo"
