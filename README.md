@@ -2,7 +2,7 @@
 
 Proyecto React + Vite + Tailwind con pruebas separadas por cuerpo y sexo.
 
-Despliegue principal: https://app-opositor-policia-bay.vercel.app
+Despliegue principal Vercel: https://app-opositor-policia-bay.vercel.app
 
 ## Cuerpos y pruebas configuradas
 
