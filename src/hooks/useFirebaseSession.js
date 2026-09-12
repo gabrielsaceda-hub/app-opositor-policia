@@ -10,6 +10,20 @@ import {
 import { auth } from '../services/firebase/firebaseClient'
 
 const provider = new GoogleAuthProvider()
+provider.setCustomParameters({ prompt: 'select_account' })
+
+function getGoogleErrorMessage(code) {
+  if (code === 'auth/popup-blocked') {
+    return 'El navegador bloqueó la ventana de Google. Permite ventanas emergentes para esta web y vuelve a pulsar "Iniciar sesión con Google".'
+  }
+  if (code === 'auth/popup-closed-by-user') {
+    return 'Cerraste la ventana de Google antes de elegir cuenta. Vuelve a intentarlo y selecciona tu cuenta.'
+  }
+  if (code === 'auth/cancelled-popup-request') {
+    return 'Ya hay una ventana de Google abierta. Ciérrala y vuelve a intentarlo una sola vez.'
+  }
+  return `No se pudo iniciar sesión con Google (${code ?? 'error desconocido'}).`
+}
 
 export function useFirebaseSession() {
   const [user, setUser] = useState(null)
@@ -60,7 +74,7 @@ export function useFirebaseSession() {
 
       setError('')
     } catch (authError) {
-      setError(`No se pudo iniciar sesión con Google (${authError?.code ?? 'error desconocido'}).`)
+      setError(getGoogleErrorMessage(authError?.code))
       throw new Error('google-auth-error', { cause: authError })
     } finally {
       setIsAuthActionLoading(false)
