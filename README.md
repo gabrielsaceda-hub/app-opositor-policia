@@ -2,6 +2,8 @@
 
 Proyecto React + Vite + Tailwind con pruebas separadas por cuerpo y sexo.
 
+Despliegue principal: https://app-opositor-policia-bay.vercel.app
+
 ## Cuerpos y pruebas configuradas
 
 - Policía Local de Madrid: 800 metros, 60 metros, salto de longitud, lanzamiento de balón, natación 25 metros.
