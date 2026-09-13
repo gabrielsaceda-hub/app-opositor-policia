@@ -15,7 +15,7 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore'
-import { db } from '../firebase/firebaseClient'
+import { auth, db } from '../firebase/firebaseClient'
 
 function toISODate(value) {
   if (value && typeof value.toDate === 'function') return value.toDate().toISOString()
@@ -107,6 +107,17 @@ export async function deleteUserDataByAdmin(targetUid) {
   await batch.commit()
 }
 
+export async function deleteUserAccountByAdmin(targetUid) {
+  const token = await auth.currentUser?.getIdToken()
+  if (!token) throw new Error('missing-auth-token')
+  const response = await fetch('/api/admin/delete-user', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uid: targetUid }),
+  })
+  if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? 'delete-user-failed')
+}
+
 // ---------- AVISOS IN-APP ----------
 export function subscribeActiveAnnouncements(onChange) {
   const ref = collection(db, 'announcements')
@@ -169,12 +180,14 @@ export async function deleteAnnouncement(id) {
 // ---------- EMAILS (cola Firestore para Trigger Email extension) ----------
 // La extensión "Trigger Email" lee la colección `mail` y envía { to, message: { subject, html } }.
 export async function queueEmail({ to, subject, html, template = 'custom' }) {
-  await addDoc(collection(db, 'mail'), {
-    to: Array.isArray(to) ? to : [to],
-    message: { subject: String(subject).slice(0, 150), html: String(html).slice(0, 20000) },
-    template,
-    createdAt: serverTimestamp(),
+  const token = await auth.currentUser?.getIdToken()
+  if (!token) throw new Error('missing-auth-token')
+  const response = await fetch('/api/send-email', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to, subject, html, template }),
   })
+  if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? 'send-email-failed')
 }
 
 export async function queueBulkEmails({ recipients, subject, html, template = 'newsletter' }) {

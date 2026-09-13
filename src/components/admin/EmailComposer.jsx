@@ -1,5 +1,4 @@
 // Compositor de emails: individual, masivo a filtrados y plantillas.
-// Encola en Firestore `mail` (Trigger Email extension). Soporta Markdown básico.
 import { useMemo, useState } from 'react'
 import { EMAIL_TEMPLATES, markdownToHtml, queueBulkEmails, queueEmail } from '../../services/admin/adminService'
 
@@ -29,19 +28,19 @@ function EmailComposer({ users, presetRecipient = null }) {
   }
 
   const onSend = async () => {
-    setStatus('Encolando…')
+    setStatus('Enviando…')
     try {
       const html = useHtml ? body : markdownToHtml(body)
       if (mode === 'individual') {
         if (!to) { setStatus('Indica un email destinatario.'); return }
         await queueEmail({ to, subject, html, template: templateKey })
-        setStatus(`Email individual encolado para ${to}.`)
+         setStatus(`Email enviado a ${to}.`)
       } else {
         const count = await queueBulkEmails({ recipients: bulkRecipients, subject, html, template: templateKey })
-        setStatus(`Newsletter encolada para ${count} destinatarios.`)
+         setStatus(`Newsletter enviada a ${count} destinatarios.`)
       }
     } catch {
-      setStatus('No se pudo encolar el email. Revisa permisos de admin.')
+      setStatus('No se pudo enviar el email. Comprueba Resend y los permisos de admin.')
     }
   }
 
@@ -77,10 +76,10 @@ function EmailComposer({ users, presetRecipient = null }) {
       </label>
 
       <button type="button" className="w-full rounded-2xl bg-brand-600 px-4 py-3 text-sm font-bold text-white" onClick={onSend}>
-        Encolar envío
+         Enviar ahora
       </button>
       {status ? <p className="text-sm font-semibold text-slate-600">{status}</p> : null}
-      <p className="text-xs text-slate-500">Requiere la extensión Firebase “Trigger Email” sobre la colección `mail`, o el endpoint /api/send-email con Resend/SendGrid.</p>
+       <p className="text-xs text-slate-500">El envío utiliza Resend mediante un backend protegido. No se exponen claves en el navegador.</p>
     </div>
   )
 }

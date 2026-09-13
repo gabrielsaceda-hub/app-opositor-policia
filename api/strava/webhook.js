@@ -1,3 +1,5 @@
+import { deleteStravaActivity, fetchAndSaveActivity, findUidByAthlete } from '../_lib/strava.js'
+
 export default async function handler(request, response) {
   if (request.method === 'GET') {
     const verifyToken = process.env.STRAVA_WEBHOOK_VERIFY_TOKEN
@@ -16,8 +18,22 @@ export default async function handler(request, response) {
 
   if (request.method === 'POST') {
     const event = request.body
-    // Production note: validate owner_id/subscription, then persist activity updates in Firestore.
-    console.log('Strava webhook event', event)
+    const uid = await findUidByAthlete(event?.owner_id)
+    if (!uid) {
+      response.status(202).json({ received: true })
+      return
+    }
+    try {
+      if (event.object_type === 'activity' && ['create', 'update'].includes(event.aspect_type)) {
+        await fetchAndSaveActivity(uid, event.object_id)
+      } else if (event.object_type === 'activity' && event.aspect_type === 'delete') {
+        await deleteStravaActivity(uid, event.object_id)
+      }
+    } catch (error) {
+      console.error('Strava webhook processing failed', error)
+      response.status(500).json({ error: 'Webhook processing failed' })
+      return
+    }
     response.status(200).json({ received: true })
     return
   }

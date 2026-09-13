@@ -65,9 +65,20 @@ VITE_STRAVA_CLIENT_ID=tu_client_id
 STRAVA_CLIENT_ID=tu_client_id
 STRAVA_CLIENT_SECRET=tu_client_secret
 STRAVA_WEBHOOK_VERIFY_TOKEN=un_token_privado_para_webhook
+STRAVA_STATE_SECRET=secreto_largo_para_firmar_oauth
+STRAVA_TOKEN_ENCRYPTION_KEY=clave_base64_de_32_bytes
+APP_ORIGIN=https://app-opositor-policia-bay.vercel.app
+FIREBASE_SERVICE_ACCOUNT_BASE64=clave_admin_base64
+RESEND_API_KEY=tu_api_key_de_resend
+EMAIL_FROM="App Opositor Policía <no-reply@tudominio.com>"
+AI_API_KEY=tu_api_key_del_proveedor_ia
+AI_API_URL=https://api.openai.com/v1/chat/completions
+AI_MODEL=gpt-4o-mini
 ```
 
 `VITE_*` se expone al navegador. No pongas secretos en variables `VITE_*`.
+
+Las variables sin prefijo `VITE_` son únicamente para API Routes de Vercel y se configuran en Vercel, nunca en el repositorio. `STRAVA_STATE_SECRET` puede generarse con `openssl rand -base64 32`; `STRAVA_TOKEN_ENCRYPTION_KEY` debe ser una clave base64 que decodifique exactamente 32 bytes, por ejemplo `openssl rand -base64 32`.
 
 ## Ranking robusto con Cloud Functions
 

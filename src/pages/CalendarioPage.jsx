@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import AppButton from '../components/ui/AppButton'
 import FormField from '../components/ui/FormField'
 import SectionCard from '../components/ui/SectionCard'
+import { auth } from '../services/firebase/firebaseClient'
 
 const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 const inputClass =
@@ -42,11 +43,21 @@ function calculateActivityLoad(activity) {
   return Math.round(duration * rpe)
 }
 
-function CalendarioPage({ profile, activities = [], wellbeing = [], onSaveActivity, onDeleteActivity, onSaveWellbeing }) {
+function CalendarioPage({ user, profile, activities = [], wellbeing = [], onSaveActivity, onDeleteActivity, onSaveWellbeing, onSyncStrava }) {
   const [selectedDay, setSelectedDay] = useState(null)
   const [form, setForm] = useState({ sport: 'Carrera', distance: '', duration: '', avgHr: '', rpe: '6', watts: '' })
   const [wellbeingForm, setWellbeingForm] = useState({ date: getWeekDate(new Date().getDay() === 0 ? 6 : new Date().getDay() - 1), sleepHours: '', fatigue: '5', soreness: '1' })
   const [message, setMessage] = useState('')
+  const [stravaMessage, setStravaMessage] = useState(() => new URLSearchParams(window.location.search).get('strava') === 'connected' ? 'Strava conectado. Sincronizando actividades…' : '')
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('strava') !== 'connected') return
+    window.history.replaceState({}, '', window.location.pathname)
+    Promise.resolve(onSyncStrava?.())
+      .then((count) => setStravaMessage(`Strava conectado. ${count} actividades sincronizadas.`))
+      .catch(() => setStravaMessage('Strava conectado, pero no se pudieron sincronizar las actividades.'))
+  }, [onSyncStrava])
 
   const plannedWeek = useMemo(
     () => days.map((day, index) => {
@@ -132,28 +143,33 @@ function CalendarioPage({ profile, activities = [], wellbeing = [], onSaveActivi
     }
   }
 
-  const connectStrava = () => {
-    const clientId = import.meta.env.VITE_STRAVA_CLIENT_ID
-    if (!clientId) {
-      window.alert('Configura VITE_STRAVA_CLIENT_ID en Vercel para activar Strava.')
+  const connectStrava = async () => {
+    if (user?.isAnonymous) {
+      setStravaMessage('Inicia sesión con Google antes de conectar Strava para vincular tus actividades a tu cuenta.')
       return
     }
-    const redirectUri = `${window.location.origin}/api/strava/callback`
-    const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      response_type: 'code',
-      approval_prompt: 'auto',
-      scope: 'read,activity:read_all',
-    })
-    window.location.href = `https://www.strava.com/oauth/authorize?${params.toString()}`
+    try {
+      const token = await auth.currentUser?.getIdToken()
+      const result = await fetch('/api/strava/start', { headers: { Authorization: `Bearer ${token}` } })
+      const payload = await result.json()
+      if (!result.ok) throw new Error(payload.error)
+      window.location.href = payload.url
+    } catch {
+      setStravaMessage('No se pudo iniciar la conexión con Strava. Revisa la configuración.')
+    }
+  }
+
+  const syncStrava = async () => {
+    const count = await onSyncStrava?.()
+    setStravaMessage(`Sincronización completada: ${count ?? 0} actividades.`)
   }
 
   return (
     <div className="space-y-4">
       <SectionCard title="Calendario inteligente" subtitle="Plan semanal, Strava y registro manual">
         <div className="grid gap-3 sm:grid-cols-2">
-          <AppButton type="button" onClick={connectStrava}>Conectar con Strava</AppButton>
+           <AppButton type="button" onClick={connectStrava}>Conectar con Strava</AppButton>
+           <AppButton type="button" variant="secondary" onClick={syncStrava}>Sincronizar Strava</AppButton>
            <AppButton type="button" variant="secondary" onClick={() => {
              const index = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1
              openDay(plannedWeek[index])
@@ -161,6 +177,7 @@ function CalendarioPage({ profile, activities = [], wellbeing = [], onSaveActivi
             Añadir actividad manual
           </AppButton>
         </div>
+        {stravaMessage ? <p className="mt-3 rounded-xl bg-brand-50 p-3 text-sm font-semibold text-brand-900">{stravaMessage}</p> : null}
       </SectionCard>
 
       <SectionCard title="Carga y fatiga" subtitle="Estimación simple en tiempo real">

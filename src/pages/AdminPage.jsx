@@ -9,7 +9,7 @@ import EmailComposer from '../components/admin/EmailComposer'
 import AnnouncementsManager from '../components/admin/AnnouncementsManager'
 import {
   computePlatformMetrics,
-  deleteUserDataByAdmin,
+  deleteUserAccountByAdmin,
   subscribeAllAnnouncements,
   subscribeAllUsers,
   updateUserByAdmin,
@@ -72,9 +72,9 @@ function AdminPage({ isAdmin, onGoHome }) {
   }
 
   const handleDelete = async (u) => {
-    if (!window.confirm(`¿Eliminar datos de ${u.email || u.uid}? Esta acción no borra su login de Auth.`)) return
+    if (!window.confirm(`¿Eliminar definitivamente a ${u.email || u.uid}? Se borrarán sus datos y su cuenta de acceso.`)) return
     try {
-      await deleteUserDataByAdmin(u.uid)
+      await deleteUserAccountByAdmin(u.uid)
     } catch {
       setNotice('No se pudo eliminar al usuario.')
     }

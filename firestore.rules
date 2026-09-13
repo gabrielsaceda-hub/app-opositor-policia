@@ -102,6 +102,7 @@ service cloud.firestore {
     match /publicMarks/{markId} {
       allow read: if true;
       allow create: if request.auth != null &&
+        request.resource.data.keys().hasOnly(['userId', 'sourceMarkId', 'testId', 'testName', 'sexo', 'mark', 'createdAt']) &&
         request.resource.data.userId == request.auth.uid &&
         request.resource.data.sourceMarkId is string &&
         markId == request.auth.uid + '_' + request.resource.data.sourceMarkId &&

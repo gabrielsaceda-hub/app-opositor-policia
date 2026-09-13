@@ -12,6 +12,7 @@ import InicioPage from './pages/InicioPage'
 import AdminPage from './pages/AdminPage'
 import CalculadoraPage from './pages/CalculadoraPage'
 import CalendarioPage from './pages/CalendarioPage'
+import CoachPage from './pages/CoachPage'
 import EntrenadorPage from './pages/EntrenadorPage'
 import GuiaPage from './pages/GuiaPage'
 import NutricionPage from './pages/NutricionPage'
@@ -21,7 +22,7 @@ import SobreContactoPage from './pages/SobreContactoPage'
 import PerfilPage from './pages/PerfilPage'
 import { useAppNavigation } from './hooks/useAppNavigation'
 import { useFirebaseSession } from './hooks/useFirebaseSession'
-import { logAnalyticsEvent } from './services/firebase/firebaseClient'
+import { auth, logAnalyticsEvent } from './services/firebase/firebaseClient'
 import {
   addUserMark,
   clearUserMarks,
@@ -193,6 +194,17 @@ function App() {
     await saveUserWellbeing(user.uid, wellbeingId, entry)
   }
 
+  const handleSyncStrava = async () => {
+    const token = await auth.currentUser?.getIdToken()
+    const response = await fetch('/api/strava/sync', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const payload = await response.json()
+    if (!response.ok) throw new Error(payload.error ?? 'strava-sync-failed')
+    return payload.synced
+  }
+
   const handleGoProfile = (context = null) => {
     setPlanningContext(context)
     if (context) {
@@ -252,11 +264,13 @@ function App() {
       return (
         <CalendarioPage
           profile={profile}
+          user={user}
           activities={activities}
           wellbeing={wellbeing}
           onSaveActivity={handleSaveActivity}
           onDeleteActivity={handleDeleteActivity}
           onSaveWellbeing={handleSaveWellbeing}
+          onSyncStrava={handleSyncStrava}
         />
       )
     }
@@ -264,6 +278,8 @@ function App() {
     if (currentTab === 'entrenador') {
       return <EntrenadorPage profile={profile} savedMarks={savedMarks} activities={activities} wellbeing={wellbeing} onGoProfile={() => changeTab('perfil')} />
     }
+
+    if (currentTab === 'coach') return <CoachPage user={user} profile={profile} savedMarks={savedMarks} activities={activities} wellbeing={wellbeing} />
 
     if (currentTab === 'nutricion') return <NutricionPage profile={profile} />
 
