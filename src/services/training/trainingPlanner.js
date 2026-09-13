@@ -140,6 +140,36 @@ function buildWeeklyPlan(profile, weaknesses, phase) {
   })
 }
 
+function getRecoveryStatus(activities, wellbeing) {
+  const latest = wellbeing?.[0]
+  const sleepHours = Number(latest?.sleepHours)
+  const fatigue = Number(latest?.fatigue)
+  const soreness = Number(latest?.soreness)
+  const lowRecovery = (Number.isFinite(sleepHours) && sleepHours < 6) || fatigue >= 8 || soreness >= 8
+
+  if (lowRecovery) {
+    return {
+      level: 'alta',
+      message: 'Recuperación baja registrada: prioriza técnica, movilidad y descanso. No fuerces máximos.',
+    }
+  }
+
+  const recentLoad = (activities ?? []).reduce((sum, activity) => {
+    const date = activity.date ? new Date(`${activity.date}T23:59:59`) : null
+    const recent = date && !Number.isNaN(date.getTime()) && Date.now() - date.getTime() <= 7 * 24 * 60 * 60 * 1000
+    return recent ? sum + (Number(activity.duration) || 0) * (Number(activity.rpe) || 0) : sum
+  }, 0)
+
+  if (recentLoad >= 1800) {
+    return {
+      level: 'moderada',
+      message: 'La carga reciente es elevada: alterna sesiones de calidad con recuperación.',
+    }
+  }
+
+  return { level: 'normal', message: 'Sin señales de recuperación baja en los registros disponibles.' }
+}
+
 function getNutrition(profile) {
   const weight = Number(profile.peso)
   const heightM = Number(profile.altura) / 100
@@ -160,7 +190,7 @@ function getNutrition(profile) {
   }
 }
 
-export function buildTrainingPlan({ profile, savedMarks }) {
+export function buildTrainingPlan({ profile, savedMarks, activities = [], wellbeing = [] }) {
   if (!profile?.cuerpoObjetivo || !profile?.sexo) {
     return { ok: false, error: 'Completa sexo y cuerpo objetivo en Perfil para generar entrenamiento.' }
   }
@@ -169,9 +199,18 @@ export function buildTrainingPlan({ profile, savedMarks }) {
   const phase = getPhase(weeksToExam)
   const weaknesses = getWeaknesses(profile, savedMarks)
   const mainWeakness = weaknesses[0]
+  const recovery = getRecoveryStatus(activities, wellbeing)
   const today = mainWeakness
     ? getSessionForTest(mainWeakness.test.nombre, { profile, phase })
     : getSessionForTest('resistencia general', { profile, phase })
+
+  const adjustedToday = recovery.level === 'alta'
+    ? {
+        ...today,
+        title: `${today.title} · recuperación`,
+        blocks: today.blocks.map((block, index) => index === 1 ? `${block} Reduce el volumen y mantén RPE bajo.` : block),
+      }
+    : today
 
   return {
     ok: true,
@@ -180,9 +219,10 @@ export function buildTrainingPlan({ profile, savedMarks }) {
     mainPriority: mainWeakness
       ? `${mainWeakness.test.nombre}: ${mainWeakness.latest ? `última nota ${mainWeakness.note?.toFixed?.(2) ?? 'sin nota'}` : 'sin marca registrada'}.`
       : 'Registra marcas para priorizar mejor.',
-    today,
+    today: adjustedToday,
     weeklyPlan: buildWeeklyPlan(profile, weaknesses, phase),
     nutrition: getNutrition(profile),
+    recovery,
     safetyNotes: [
       'No hagas dos sesiones máximas seguidas de la misma cualidad.',
       'Si hay dolor articular o muscular creciente, cambia por técnica suave o descanso.',

@@ -25,8 +25,7 @@ function toISODate(value) {
 // ---------- USUARIOS ----------
 export function subscribeAllUsers(onChange, maxUsers = 500) {
   const usersRef = collection(db, 'users')
-  const usersQuery = query(usersRef, orderBy('createdAt', 'desc'), limit(maxUsers))
-  return onSnapshot(usersQuery, (snapshot) => {
+  return onSnapshot(usersRef, (snapshot) => {
     onChange(
       snapshot.docs.map((d) => {
         const data = d.data()
@@ -48,7 +47,9 @@ export function subscribeAllUsers(onChange, maxUsers = 500) {
           lastLoginAt: toISODate(data.lastLoginAt),
           updatedAt: toISODate(data.updatedAt),
         }
-      }),
+      })
+        .sort((a, b) => new Date(b.createdAt ?? 0) - new Date(a.createdAt ?? 0))
+        .slice(0, maxUsers),
     )
   })
 }
@@ -75,8 +76,13 @@ export async function updateUserByAdmin(targetUid, patch) {
   const clean = {}
   if (patch.nombre !== undefined) clean.nombre = String(patch.nombre).slice(0, 80)
   if (patch.email !== undefined) {
-    const email = String(patch.email).trim().slice(0, 120)
+    const email = String(patch.email).trim().toLowerCase().slice(0, 120)
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('invalid-email')
+    const duplicateQuery = query(collection(db, 'users'), where('email', '==', email), limit(2))
+    const duplicateSnapshot = await getDocs(duplicateQuery)
+    if (duplicateSnapshot.docs.some((item) => item.id !== targetUid)) {
+      throw new Error('email-already-in-use')
+    }
     clean.email = email
     // Marca el email como fijado por admin para que el login no lo sobrescriba.
     clean.emailManual = true
@@ -104,7 +110,7 @@ export async function deleteUserDataByAdmin(targetUid) {
 // ---------- AVISOS IN-APP ----------
 export function subscribeActiveAnnouncements(onChange) {
   const ref = collection(db, 'announcements')
-  const q = query(ref, where('active', '==', true), orderBy('createdAt', 'desc'), limit(5))
+  const q = query(ref, where('active', '==', true))
   return onSnapshot(q, (snap) => {
     const now = Date.now()
     onChange(
@@ -113,15 +119,30 @@ export function subscribeActiveAnnouncements(onChange) {
         .filter((a) => {
           const exp = a.expiresAt && typeof a.expiresAt.toDate === 'function' ? a.expiresAt.toDate().getTime() : null
           return exp === null || exp > now
-        }),
+        })
+        .sort((a, b) => {
+          const aDate = a.createdAt && typeof a.createdAt.toMillis === 'function' ? a.createdAt.toMillis() : 0
+          const bDate = b.createdAt && typeof b.createdAt.toMillis === 'function' ? b.createdAt.toMillis() : 0
+          return bDate - aDate
+        })
+        .slice(0, 5),
     )
   })
 }
 
 export function subscribeAllAnnouncements(onChange) {
   const ref = collection(db, 'announcements')
-  const q = query(ref, orderBy('createdAt', 'desc'), limit(50))
-  return onSnapshot(q, (snap) => onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(ref, (snap) => {
+    const items = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => {
+        const aDate = a.createdAt && typeof a.createdAt.toMillis === 'function' ? a.createdAt.toMillis() : 0
+        const bDate = b.createdAt && typeof b.createdAt.toMillis === 'function' ? b.createdAt.toMillis() : 0
+        return bDate - aDate
+      })
+      .slice(0, 50)
+    onChange(items)
+  })
 }
 
 export async function saveAnnouncement({ id = null, title, message, active = true, expiresAtISO = '' }) {

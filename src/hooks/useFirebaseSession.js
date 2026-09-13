@@ -7,7 +7,7 @@ import {
   signInWithPopup,
   signOut,
 } from 'firebase/auth'
-import { auth } from '../services/firebase/firebaseClient'
+import { auth, logAnalyticsEvent } from '../services/firebase/firebaseClient'
 import { getMarksOnce, getProfileOnce, migrateAnonymousData } from '../services/firebase/userData'
 
 const provider = new GoogleAuthProvider()
@@ -60,6 +60,7 @@ export function useFirebaseSession() {
 
   const signInWithGoogle = async () => {
     setIsAuthActionLoading(true)
+    logAnalyticsEvent('signup_started', { method: 'google' })
 
     try {
       // Guardamos los datos de la sesión anónima ANTES de vincular: si el email
@@ -105,6 +106,7 @@ export function useFirebaseSession() {
       }
 
       setError('')
+      logAnalyticsEvent('signup_completed', { method: 'google', already_registered: alreadyRegistered })
       return { alreadyRegistered }
     } catch (authError) {
       setError(getGoogleErrorMessage(authError?.code))

@@ -18,11 +18,13 @@ import {
 } from '../services/rhythm/sessionService'
 import { allSessionTemplates } from '../data/rhythm/sessionTemplates'
 import { parseCustomSessionText } from '../services/rhythm/customSessionParser'
+import ConversionCard from '../components/conversion/ConversionCard'
+import { logAnalyticsEvent } from '../services/firebase/firebaseClient'
 
 const inputClass =
   'w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base text-slate-800 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100'
 
-function RitmoBasePage() {
+function RitmoBasePage({ user, onGoProfile, onGoTrainer }) {
   const [marca800, setMarca800] = useLocalStorageState('ritmo-base-marca-800', '')
   const [fechaExamen, setFechaExamen] = useLocalStorageState('ritmo-base-fecha-examen', '')
   const [mode, setMode] = useState('hoy')
@@ -94,7 +96,9 @@ function RitmoBasePage() {
   }
 
   const handleValidate = () => {
-    setError(validateInputs())
+    const validationError = validateInputs()
+    setError(validationError)
+    if (!validationError) logAnalyticsEvent('public_pace_calculated', { distance: '800' })
   }
 
   const shouldShowResults = !validateInputs()
@@ -291,6 +295,17 @@ function RitmoBasePage() {
               </div>
             </SectionCard>
           ) : null}
+
+          <ConversionCard
+            user={user}
+            title="Ya sabes el ritmo. Ahora toca llegar a él."
+            description="Planifica tus entrenamientos hasta la fecha del examen teniendo en cuenta tu evolución y descanso."
+            primaryLabel="Planificar cómo llegar a esta marca"
+            registeredLabel="Ir a mi entrenador"
+            onPrimary={user?.isAnonymous
+              ? () => onGoProfile({ marca800, fechaExamen })
+              : onGoTrainer}
+          />
         </>
       ) : null}
     </div>

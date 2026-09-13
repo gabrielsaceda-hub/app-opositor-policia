@@ -20,19 +20,20 @@ function UsersTable({ users, onView, onUpdate, onToggleStatus, onDelete, onSendE
   const [emailDrafts, setEmailDrafts] = useState({})
   const [emailMsg, setEmailMsg] = useState('')
 
-  const saveEmail = (u) => {
-    const draft = (emailDrafts[u.uid] ?? u.email ?? '').trim()
+  const saveEmail = async (u) => {
+    const draft = (emailDrafts[u.uid] ?? u.email ?? '').trim().toLowerCase()
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft)) {
       setEmailMsg('Email no válido. No se ha guardado.')
       return
     }
+    const saved = await onUpdate(u.uid, { email: draft })
+    if (!saved) return
     setEmailMsg('')
     setEmailDrafts((prev) => {
       const next = { ...prev }
       delete next[u.uid]
       return next
     })
-    onUpdate(u.uid, { email: draft })
   }
 
   const filtered = useMemo(() => {
@@ -96,9 +97,9 @@ function UsersTable({ users, onView, onUpdate, onToggleStatus, onDelete, onSendE
               <input
                 className={inputClass}
                 type="email"
-                title="Email de contacto (solo editable por admin)"
+                title="Email de la cuenta (solo editable por admin)"
                 value={emailDrafts[u.uid] ?? u.email ?? ''}
-                placeholder="Email de contacto"
+                placeholder="Email de la cuenta"
                 onChange={(e) => setEmailDrafts((prev) => ({ ...prev, [u.uid]: e.target.value }))}
               />
               <button type="button" className="rounded-xl bg-brand-50 px-3 py-2 text-xs font-bold text-brand-900" onClick={() => saveEmail(u)}>Guardar email</button>

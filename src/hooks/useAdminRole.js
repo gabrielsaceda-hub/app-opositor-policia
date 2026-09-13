@@ -16,6 +16,8 @@ export function useAdminRole(user) {
       setIsLoading(false)
       return undefined
     }
+    // Un cambio de cuenta exige volver a validar su documento antes de mostrar /admin.
+    setIsLoading(true)
     const unsub = subscribeUserRole(user.uid, (next) => {
       setRoleDoc(next)
       setIsLoading(false)

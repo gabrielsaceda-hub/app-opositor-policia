@@ -16,9 +16,9 @@ function SessionCard({ session }) {
   )
 }
 
-function EntrenadorPage({ profile, savedMarks, onGoProfile }) {
+function EntrenadorPage({ profile, savedMarks, activities, wellbeing, onGoProfile }) {
   const [mode, setMode] = useState('today')
-  const plan = useMemo(() => buildTrainingPlan({ profile, savedMarks }), [profile, savedMarks])
+  const plan = useMemo(() => buildTrainingPlan({ profile, savedMarks, activities, wellbeing }), [profile, savedMarks, activities, wellbeing])
 
   if (!plan.ok) {
     return (
@@ -46,6 +46,9 @@ function EntrenadorPage({ profile, savedMarks, onGoProfile }) {
           </p>
           <p className="rounded-2xl bg-brand-50 p-3 font-semibold text-brand-900">
             Prioridad actual: {plan.mainPriority}
+          </p>
+          <p className={`rounded-2xl p-3 font-semibold ${plan.recovery.level === 'alta' ? 'bg-rose-50 text-rose-800' : 'bg-slate-50 text-slate-700'}`}>
+            Recuperación: {plan.recovery.message}
           </p>
         </div>
 

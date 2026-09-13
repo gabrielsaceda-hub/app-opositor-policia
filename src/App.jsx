@@ -5,7 +5,6 @@ import PageContainer from './components/layout/PageContainer'
 import Sidebar from './components/layout/Sidebar'
 import Footer from './components/layout/Footer'
 import CookieConsent from './components/legal/CookieConsent'
-import { isAdminUser } from './config/admin'
 import { useAdminRole } from './hooks/useAdminRole'
 import { subscribeActiveAnnouncements } from './services/admin/adminService'
 import { ensureUserMetadata } from './services/firebase/userData'
@@ -34,6 +33,11 @@ import {
   subscribePublicRankings,
   subscribeProfile,
   subscribeSavedMarks,
+  subscribeUserActivities,
+  subscribeUserWellbeing,
+  saveUserActivity,
+  deleteUserActivity,
+  saveUserWellbeing,
 } from './services/firebase/userData'
 
 const emptyProfile = {
@@ -67,12 +71,15 @@ function App() {
   } = useFirebaseSession()
   const [profile, setProfile] = useState(emptyProfile)
   const [savedMarks, setSavedMarks] = useState([])
+  const [activities, setActivities] = useState([])
+  const [wellbeing, setWellbeing] = useState([])
   const [adminMarks, setAdminMarks] = useState([])
   const [publicRankings, setPublicRankings] = useState([])
   const [dataError, setDataError] = useState('')
   const [isProfileReady, setIsProfileReady] = useState(false)
   const [activeAnnouncements, setActiveAnnouncements] = useState([])
-  const { isAdmin, isLoading: isAdminLoading } = useAdminRole(user)
+  const [planningContext, setPlanningContext] = useState(null)
+  const { isAdmin, roleDoc, isLoading: isAdminLoading } = useAdminRole(user)
   const visibleTabs = tabs.filter((t) => !t.adminOnly || isAdmin)
 
   useEffect(() => {
@@ -81,8 +88,6 @@ function App() {
     ensureUserMetadata(user.uid, { email: user.email ?? '', isAnonymous: user.isAnonymous }).catch(() => {})
 
     let isActive = true
-    const isAdmin = isAdminUser(user)
-
     const unsubscribeProfile = subscribeProfile(user.uid, (nextProfile) => {
       if (!isActive) return
       setProfile(nextProfile)
@@ -93,6 +98,9 @@ function App() {
       if (!isActive) return
       setSavedMarks(nextMarks)
     })
+
+    const unsubscribeActivities = subscribeUserActivities(user.uid, setActivities)
+    const unsubscribeWellbeing = subscribeUserWellbeing(user.uid, setWellbeing)
 
     const unsubscribeRankings = subscribePublicRankings((nextRankings) => {
       if (!isActive) return
@@ -110,14 +118,24 @@ function App() {
       isActive = false
       setProfile(emptyProfile)
       setSavedMarks([])
+      setActivities([])
+      setWellbeing([])
       setAdminMarks([])
       setIsProfileReady(false)
       unsubscribeProfile()
       unsubscribeMarks()
+      unsubscribeActivities()
+      unsubscribeWellbeing()
       unsubscribeRankings()
       unsubscribeAdminMarks()
     }
-  }, [user])
+  }, [user, isAdmin])
+
+  useEffect(() => {
+    if (!isAuthLoading && !isAdminLoading && currentTab === 'admin' && !isAdmin) {
+      changeTab('inicio', { replace: true })
+    }
+  }, [changeTab, currentTab, isAdmin, isAdminLoading, isAuthLoading])
 
   useEffect(() => {
     logAnalyticsEvent('page_view', { page_title: currentTab, page_location: window.location.href })
@@ -144,8 +162,10 @@ function App() {
     if (!user?.uid) return
 
     try {
-      await addUserMark(user.uid, entry)
+      const markId = await addUserMark(user.uid, entry)
       await registerPublicRankingMark({
+        uid: user.uid,
+        markId,
         testId: entry.pruebaId,
         testName: entry.pruebaNombre,
         sexo: entry.sexo,
@@ -156,6 +176,33 @@ function App() {
       setDataError('No se pudo guardar la marca en Firebase.')
       throw new Error('save-mark-error')
     }
+  }
+
+  const handleSaveActivity = async (activityId, activity) => {
+    if (!user?.uid) return
+    await saveUserActivity(user.uid, activityId, activity)
+  }
+
+  const handleDeleteActivity = async (activityId) => {
+    if (!user?.uid) return
+    await deleteUserActivity(user.uid, activityId)
+  }
+
+  const handleSaveWellbeing = async (wellbeingId, entry) => {
+    if (!user?.uid) return
+    await saveUserWellbeing(user.uid, wellbeingId, entry)
+  }
+
+  const handleGoProfile = (context = null) => {
+    setPlanningContext(context)
+    if (context) {
+      try {
+        sessionStorage.setItem('pending-plan-context', JSON.stringify(context))
+      } catch {
+        // El contexto también se mantiene en estado si el navegador bloquea storage.
+      }
+    }
+    changeTab('perfil')
   }
 
   const handleClearMarks = async () => {
@@ -183,7 +230,7 @@ function App() {
   }
 
   const handleDeleteAdminMark = async ({ userId, markId }) => {
-    if (!user?.uid || !isAdminUser(user)) return
+    if (!user?.uid || !isAdmin) return
 
     try {
       await deleteAdminMark(userId, markId)
@@ -195,22 +242,33 @@ function App() {
   }
 
   const renderPage = () => {
-    if (currentTab === 'inicio') return <InicioPage publicRankings={publicRankings} />
+    if (currentTab === 'inicio') return <InicioPage publicRankings={publicRankings} user={user} onGoProfile={() => handleGoProfile()} />
     if (currentTab === 'guia') return <GuiaPage />
     if (currentTab === 'calculadora') {
-      return <CalculadoraPage profile={profile} onSaveMark={handleSaveMark} />
+      return <CalculadoraPage profile={profile} user={user} onSaveMark={handleSaveMark} onGoProfile={handleGoProfile} />
     }
 
-    if (currentTab === 'calendario') return <CalendarioPage profile={profile} />
+    if (currentTab === 'calendario') {
+      return (
+        <CalendarioPage
+          profile={profile}
+          activities={activities}
+          wellbeing={wellbeing}
+          onSaveActivity={handleSaveActivity}
+          onDeleteActivity={handleDeleteActivity}
+          onSaveWellbeing={handleSaveWellbeing}
+        />
+      )
+    }
 
     if (currentTab === 'entrenador') {
-      return <EntrenadorPage profile={profile} savedMarks={savedMarks} onGoProfile={() => changeTab('perfil')} />
+      return <EntrenadorPage profile={profile} savedMarks={savedMarks} activities={activities} wellbeing={wellbeing} onGoProfile={() => changeTab('perfil')} />
     }
 
     if (currentTab === 'nutricion') return <NutricionPage profile={profile} />
 
     if (currentTab === 'ritmo') {
-      return <RitmoBasePage />
+      return <RitmoBasePage user={user} onGoProfile={handleGoProfile} onGoTrainer={() => changeTab('entrenador')} />
     }
 
     if (currentTab === 'sobre') return <SobreContactoPage />
@@ -222,9 +280,11 @@ function App() {
 
     return (
       <PerfilPage
-        key={`${user?.uid}-${profile.nombre}-${profile.sexo}-${profile.cuerpoObjetivo}`}
+        key={`${user?.uid}-${profile.nombre}-${profile.sexo}-${profile.cuerpoObjetivo}-${planningContext?.pruebaId ?? ''}`}
         user={user}
-        isAdmin={isAdminUser(user)}
+        isAdmin={isAdmin}
+        accountEmail={roleDoc?.email || user?.email || ''}
+        planningContext={planningContext}
         isAuthActionLoading={isAuthActionLoading}
         onSignInWithGoogle={signInWithGoogle}
         onSignOutGoogle={signOutAndContinueAnonymous}
@@ -247,7 +307,7 @@ function App() {
       <Header
         appName="App Opositor Policía"
         user={user}
-        isAdmin={isAdminUser(user)}
+        isAdmin={isAdmin}
         onAccountClick={() => changeTab('perfil')}
       />
       {activeAnnouncements.length > 0 ? (

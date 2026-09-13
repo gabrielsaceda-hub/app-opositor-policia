@@ -2,8 +2,19 @@ import SectionCard from '../components/ui/SectionCard'
 import AdSlot from '../components/ads/AdSlot'
 import { getTestById } from '../data/tests'
 import { formatNormalizedMarkByTest } from '../utils/formatters'
+import { useEffect, useRef } from 'react'
+import ConversionCard from '../components/conversion/ConversionCard'
+import { logAnalyticsEvent } from '../services/firebase/firebaseClient'
 
-function InicioPage({ publicRankings = [] }) {
+function InicioPage({ publicRankings = [], user, onGoProfile }) {
+  const viewed = useRef(false)
+
+  useEffect(() => {
+    if (viewed.current || publicRankings.length === 0) return
+    viewed.current = true
+    logAnalyticsEvent('public_ranking_viewed', { samples: publicRankings.length })
+  }, [publicRankings.length])
+
   return (
     <div className="space-y-4">
       <AdSlot slot={import.meta.env.VITE_ADSENSE_SLOT_TOP || '1111111111'} />
@@ -67,6 +78,16 @@ function InicioPage({ publicRankings = [] }) {
           </div>
         )}
       </SectionCard>
+      {publicRankings.length > 0 ? (
+        <ConversionCard
+          user={user}
+          title="¿Quieres mejorar tu posición?"
+          description="Crea tu perfil gratuito y realiza un seguimiento de tus marcas, entrenamientos y evolución."
+          primaryLabel="Empezar gratis"
+          registeredLabel="Ir a mi perfil"
+          onPrimary={onGoProfile}
+        />
+      ) : null}
     </div>
   )
 }

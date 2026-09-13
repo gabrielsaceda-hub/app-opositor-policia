@@ -14,12 +14,25 @@ const firebaseConfig = {
 }
 
 const app = initializeApp(firebaseConfig)
-const analyticsPromise = typeof window === 'undefined' ? Promise.resolve(null) : isSupported().then((ok) => (ok ? getAnalytics(app) : null))
+let analyticsPromise = null
+
+function hasAnalyticsConsent() {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.localStorage.getItem('cookie-consent-v1') === 'accepted'
+  } catch {
+    return false
+  }
+}
 
 export const auth = getAuth(app)
 export const db = getFirestore(app)
 
 export async function logAnalyticsEvent(eventName, params = {}) {
+  if (!hasAnalyticsConsent()) return
+  if (!analyticsPromise) {
+    analyticsPromise = isSupported().then((ok) => (ok ? getAnalytics(app) : null))
+  }
   const analytics = await analyticsPromise
   if (!analytics) return
   logEvent(analytics, eventName, params)

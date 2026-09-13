@@ -19,6 +19,15 @@ const materialOptions = [
   { id: 'balon', label: 'Balón medicinal' },
 ]
 
+function readPendingPlanContext() {
+  if (typeof window === 'undefined') return null
+  try {
+    return JSON.parse(window.sessionStorage.getItem('pending-plan-context') ?? 'null')
+  } catch {
+    return null
+  }
+}
+
 function formatDate(isoDate) {
   const date = new Date(isoDate)
   return date.toLocaleString('es-ES', {
@@ -33,6 +42,8 @@ function formatDate(isoDate) {
 function ProfilePage({
   user,
   isAdmin,
+  accountEmail,
+  planningContext,
   isAuthActionLoading,
   onSignInWithGoogle,
   onSignOutGoogle,
@@ -45,10 +56,12 @@ function ProfilePage({
   onDeleteAdminMark,
   onGoAdmin,
 }) {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => {
+    const context = planningContext ?? readPendingPlanContext()
+    return {
     nombre: profile?.nombre ?? '',
-    sexo: profile?.sexo ?? '',
-    cuerpoObjetivo: profile?.cuerpoObjetivo ?? '',
+    sexo: profile?.sexo || context?.sexo || '',
+    cuerpoObjetivo: profile?.cuerpoObjetivo || context?.cuerpoId || '',
     peso: profile?.peso ?? '',
     altura: profile?.altura ?? '',
     edad: profile?.edad ?? '',
@@ -62,6 +75,7 @@ function ProfilePage({
     objetivoEntreno: profile?.objetivoEntreno ?? 'mejorar-nota',
     material: profile?.material ?? {},
     lesiones: profile?.lesiones ?? '',
+    }
   })
   const [message, setMessage] = useState('')
 
@@ -306,12 +320,17 @@ function ProfilePage({
       ) : null}
 
       <SectionCard title="Perfil y objetivo" subtitle="Define tus datos físicos y metas de prueba">
+        {planningContext?.pruebaId || planningContext?.marca800 ? (
+          <p className="mb-4 rounded-2xl bg-brand-50 p-3 text-sm font-semibold text-brand-900">
+            Hemos conservado tu contexto: {planningContext.pruebaId ? `prueba ${planningContext.pruebaId} · marca actual ${planningContext.marcaActual}` : `marca actual de 800 m ${planningContext.marca800}`}. Completa tu objetivo y guarda el perfil.
+          </p>
+        ) : null}
         <form className="space-y-4" onSubmit={onSubmit}>
           <FormField label="Email (no se puede modificar)">
             <input
               className={`${inputClass} cursor-not-allowed opacity-70`}
               type="email"
-              value={user?.email ?? ''}
+              value={accountEmail}
               placeholder={user?.isAnonymous ? 'Sin email (sesión anónima)' : ''}
               disabled
               readOnly

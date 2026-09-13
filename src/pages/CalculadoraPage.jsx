@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import ResultCard from '../components/calculator/ResultCard'
+import ConversionCard from '../components/conversion/ConversionCard'
 import AppButton from '../components/ui/AppButton'
 import FormField from '../components/ui/FormField'
 import SectionCard from '../components/ui/SectionCard'
@@ -8,6 +9,7 @@ import { getResultadoByBody } from '../services/calculator/getResultadoByBody'
 import { cuerpos, sexos } from '../utils/constants'
 import { formatMarkDisplay } from '../utils/formatters'
 import { validateForm, validateMark } from '../utils/validators'
+import { logAnalyticsEvent } from '../services/firebase/firebaseClient'
 
 const inputClass =
   'w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base text-slate-800 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-60'
@@ -23,7 +25,7 @@ function getPlaceholder(test) {
   return 'Introduce tu marca'
 }
 
-function CalculadoraPage({ profile, onSaveMark }) {
+function CalculadoraPage({ profile, user, onSaveMark, onGoProfile }) {
   const [cuerpoId, setCuerpoId] = useState('')
   const [sexo, setSexo] = useState(profile?.sexo ?? '')
   const [pruebaId, setPruebaId] = useState('')
@@ -110,6 +112,7 @@ function CalculadoraPage({ profile, onSaveMark }) {
       marcaNormalizada: normalized.value,
       marcaMostrada: formatMarkDisplay(marca, normalized.value, selectedTest),
     })
+    logAnalyticsEvent('public_score_calculated', { cuerpo: cuerpoId, prueba: pruebaId })
   }
 
   const onSaveResult = async () => {
@@ -217,11 +220,19 @@ function CalculadoraPage({ profile, onSaveMark }) {
       <ResultCard result={result} />
 
       {result ? (
-        <SectionCard title="Guardar resultado" subtitle="Envía esta marca a tu perfil para ver medias">
-          <AppButton type="button" onClick={onSaveResult}>
-            Guardar en perfil
-          </AppButton>
-        </SectionCard>
+        <ConversionCard
+          user={user}
+          title="¿Quieres mejorar esta marca?"
+          description="Planificación adaptada a tu oposición, tu nivel actual y la fecha de tus pruebas."
+          primaryLabel="Crear mi plan gratis"
+          registeredLabel="Guardar marca en mi perfil"
+          onPrimary={user?.isAnonymous ? () => onGoProfile({
+            cuerpoId: result.cuerpoId,
+            sexo: result.sexo,
+            pruebaId: result.pruebaId,
+            marcaActual: result.marcaNormalizada,
+          }) : onSaveResult}
+        />
       ) : null}
     </div>
   )

@@ -52,8 +52,16 @@ function AdminPage({ isAdmin, onGoHome }) {
     try {
       await updateUserByAdmin(uid, patch)
       setNotice('')
-    } catch {
-      setNotice('No se pudo actualizar el usuario.')
+      return true
+    } catch (error) {
+      setNotice(
+        error?.message === 'email-already-in-use'
+          ? 'Ese email ya pertenece a otro socio.'
+          : error?.message === 'invalid-email'
+            ? 'El formato del email no es válido.'
+          : 'No se pudo actualizar el usuario.',
+      )
+      return false
     }
   }
 

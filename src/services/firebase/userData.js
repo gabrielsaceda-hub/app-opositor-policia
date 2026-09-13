@@ -12,6 +12,7 @@ import {
   runTransaction,
   serverTimestamp,
   setDoc,
+  where,
   writeBatch,
 } from 'firebase/firestore'
 import { db } from './firebaseClient'
@@ -61,7 +62,7 @@ export function subscribeUserRole(uid, onChange) {
 export async function ensureUserMetadata(uid, { email = '', isAnonymous = false } = {}) {
   const ref = doc(db, 'users', uid)
   const patch = {
-    email: isAnonymous ? '' : email,
+    email: isAnonymous ? '' : String(email).trim().toLowerCase(),
     lastLoginAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   }
@@ -77,7 +78,11 @@ export async function ensureUserMetadata(uid, { email = '', isAnonymous = false 
         // Si el admin fijó manualmente el email de contacto, el login no lo sobrescribe.
         const data = snap.data()
         const safePatch = { ...patch }
-        if (data.emailManual) delete safePatch.email
+        if (data.email) delete safePatch.email
+        if (!data.createdAt) safePatch.createdAt = serverTimestamp()
+        if (!data.role) safePatch.role = 'user'
+        if (!data.status) safePatch.status = 'activo'
+        if (!data.plan) safePatch.plan = 'gratuito'
         transaction.set(ref, safePatch, { merge: true })
       }
     })
@@ -108,6 +113,57 @@ export function subscribeSavedMarks(uid, onChange) {
   })
 }
 
+export function subscribeUserActivities(uid, onChange) {
+  const activitiesRef = collection(db, 'users', uid, 'activities')
+
+  return onSnapshot(activitiesRef, (snapshot) => {
+    const activities = snapshot.docs
+      .map((item) => ({ id: item.id, ...item.data() }))
+      .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')))
+    onChange(activities)
+  })
+}
+
+export async function saveUserActivity(uid, activityId, activity) {
+  await setDoc(doc(db, 'users', uid, 'activities', activityId), {
+    sport: String(activity.sport ?? '').slice(0, 40),
+    distance: String(activity.distance ?? '').slice(0, 20),
+    duration: String(activity.duration ?? '').slice(0, 20),
+    avgHr: String(activity.avgHr ?? '').slice(0, 20),
+    rpe: String(activity.rpe ?? '').slice(0, 4),
+    watts: String(activity.watts ?? '').slice(0, 20),
+    day: String(activity.day ?? '').slice(0, 20),
+    date: String(activity.date ?? '').slice(0, 10),
+    source: activity.source === 'strava' ? 'strava' : 'manual',
+    updatedAt: serverTimestamp(),
+  }, { merge: true })
+}
+
+export async function deleteUserActivity(uid, activityId) {
+  await deleteDoc(doc(db, 'users', uid, 'activities', activityId))
+}
+
+export function subscribeUserWellbeing(uid, onChange) {
+  const wellbeingRef = collection(db, 'users', uid, 'wellbeing')
+
+  return onSnapshot(wellbeingRef, (snapshot) => {
+    const entries = snapshot.docs
+      .map((item) => ({ id: item.id, ...item.data() }))
+      .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')))
+    onChange(entries)
+  })
+}
+
+export async function saveUserWellbeing(uid, wellbeingId, wellbeing) {
+  await setDoc(doc(db, 'users', uid, 'wellbeing', wellbeingId), {
+    date: String(wellbeing.date ?? '').slice(0, 10),
+    sleepHours: String(wellbeing.sleepHours ?? '').slice(0, 4),
+    fatigue: String(wellbeing.fatigue ?? '').slice(0, 4),
+    soreness: String(wellbeing.soreness ?? '').slice(0, 4),
+    updatedAt: serverTimestamp(),
+  }, { merge: true })
+}
+
 export async function saveUserProfile(uid, profile) {
   await setDoc(
     doc(db, 'users', uid),
@@ -135,10 +191,11 @@ export async function saveUserProfile(uid, profile) {
 }
 
 export async function addUserMark(uid, mark) {
-  await addDoc(collection(db, 'users', uid, 'marks'), {
+  const created = await addDoc(collection(db, 'users', uid, 'marks'), {
     ...mark,
     createdAt: serverTimestamp(),
   })
+  return created.id
 }
 
 export async function clearUserMarks(uid) {
@@ -147,15 +204,20 @@ export async function clearUserMarks(uid) {
 
   if (marksSnapshot.empty) return
 
+  const publicMarksSnapshot = await getDocs(query(collection(db, 'publicMarks'), where('userId', '==', uid)))
   const batch = writeBatch(db)
   marksSnapshot.docs.forEach((docItem) => {
     batch.delete(doc(marksRef, docItem.id))
   })
+  publicMarksSnapshot.docs.forEach((docItem) => batch.delete(docItem.ref))
 
   await batch.commit()
 }
 
 export async function deleteUserMark(uid, markId) {
+  const publicMarkRef = doc(db, 'publicMarks', `${uid}_${markId}`)
+  const publicMark = await getDoc(publicMarkRef)
+  if (publicMark.exists()) await deleteDoc(publicMarkRef)
   await deleteDoc(doc(db, 'users', uid, 'marks', markId))
 }
 
@@ -196,7 +258,18 @@ export async function migrateAnonymousData(anonProfile, anonMarks, targetUid) {
   for (const mark of anonMarks) {
     const markData = { ...mark }
     delete markData.id
-    await addDoc(collection(db, 'users', targetUid, 'marks'), { ...markData, migrated: true })
+    const createdMark = await addDoc(collection(db, 'users', targetUid, 'marks'), { ...markData, migrated: true })
+    if (markData.pruebaId && markData.pruebaNombre && markData.sexo && Number.isFinite(Number(markData.marcaNormalizada))) {
+      await setDoc(doc(db, 'publicMarks', `${targetUid}_${createdMark.id}`), {
+        userId: targetUid,
+        sourceMarkId: createdMark.id,
+        testId: markData.pruebaId,
+        testName: markData.pruebaNombre,
+        sexo: markData.sexo,
+        mark: Number(markData.marcaNormalizada),
+        createdAt: serverTimestamp(),
+      })
+    }
     marksCopied += 1
   }
 
@@ -231,48 +304,60 @@ export async function deleteAdminMark(userId, markId) {
 }
 
 export function subscribePublicRankings(onChange) {
-  const rankingsRef = collection(db, 'publicRankings')
-  const rankingsQuery = query(rankingsRef, orderBy('testName', 'asc'))
+  let publicMarks = []
+  let legacyRankings = []
 
-  return onSnapshot(rankingsQuery, (snapshot) => {
-    const items = snapshot.docs.map((docItem) => ({
-      id: docItem.id,
-      ...docItem.data(),
-    }))
-
-    onChange(items)
-  })
-}
-
-export async function registerPublicRankingMark({ testId, testName, sexo, mark }) {
-  const rankingId = `${testId}_${sexo}`
-  const rankingRef = doc(db, 'publicRankings', rankingId)
-
-  await runTransaction(db, async (transaction) => {
-    const rankingSnap = await transaction.get(rankingRef)
-    const current = rankingSnap.exists()
-      ? rankingSnap.data()
-      : {
+  const emit = () => {
+    const grouped = publicMarks.reduce((acc, item) => {
+      if (!item.testId || !item.sexo || !Number.isFinite(Number(item.mark))) return acc
+      const key = `${item.testId}_${item.sexo}`
+      if (!acc[key]) {
+        acc[key] = {
+          id: key,
+          testId: item.testId,
+          testName: item.testName,
+          sexo: item.sexo,
           totalMarks: 0,
           sumMarks: 0,
-          avgMark: 0,
         }
+      }
+      acc[key].totalMarks += 1
+      acc[key].sumMarks += Number(item.mark)
+      return acc
+    }, {})
 
-    const totalMarks = Number(current.totalMarks ?? 0) + 1
-    const sumMarks = Number(current.sumMarks ?? 0) + Number(mark)
+    const current = Object.values(grouped).map((item) => ({
+      ...item,
+      avgMark: item.sumMarks / item.totalMarks,
+    }))
+    const currentKeys = new Set(current.map((item) => item.id))
+    const legacy = legacyRankings.filter((item) => !currentKeys.has(`${item.testId}_${item.sexo}`))
+    onChange([...current, ...legacy].sort((a, b) => String(a.testName).localeCompare(String(b.testName))))
+  }
 
-    transaction.set(
-      rankingRef,
-      {
-        testId,
-        testName,
-        sexo,
-        totalMarks,
-        sumMarks,
-        avgMark: sumMarks / totalMarks,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    )
+  const unsubscribeMarks = onSnapshot(collection(db, 'publicMarks'), (snapshot) => {
+    publicMarks = snapshot.docs.map((item) => item.data())
+    emit()
+  })
+  const unsubscribeLegacy = onSnapshot(collection(db, 'publicRankings'), (snapshot) => {
+    legacyRankings = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
+    emit()
+  })
+
+  return () => {
+    unsubscribeMarks()
+    unsubscribeLegacy()
+  }
+}
+
+export async function registerPublicRankingMark({ uid, markId, testId, testName, sexo, mark }) {
+  await setDoc(doc(db, 'publicMarks', `${uid}_${markId}`), {
+    userId: uid,
+    sourceMarkId: markId,
+    testId,
+    testName,
+    sexo,
+    mark: Number(mark),
+    createdAt: serverTimestamp(),
   })
 }
