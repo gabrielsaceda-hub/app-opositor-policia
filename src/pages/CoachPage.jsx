@@ -33,7 +33,7 @@ function CoachPage({ user, profile, savedMarks, activities, wellbeing }) {
       setAnswer(payload.answer)
     } catch (requestError) {
       setError(requestError.message === 'AI provider is not configured'
-        ? 'El Coach IA todavía no está configurado por el administrador.'
+        ? 'El Coach IA formará parte del paquete premium, disponible próximamente.'
         : requestError.message === 'Daily Coach limit reached'
           ? 'Has alcanzado el límite diario de consultas. Inténtalo mañana.'
           : 'No se pudo consultar el Coach IA.')
@@ -53,6 +53,7 @@ function CoachPage({ user, profile, savedMarks, activities, wellbeing }) {
   return (
     <div className="space-y-4">
       <SectionCard title="Coach IA" subtitle="Orientación general basada en tus datos registrados">
+        <p className="mb-3 rounded-2xl bg-violet-50 p-3 text-sm font-semibold text-violet-800">Función premium · Disponible próximamente en el paquete premium.</p>
         <p className="mb-4 rounded-2xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">No sustituye a un entrenador ni a profesionales sanitarios. No consultes aquí urgencias, lesiones graves ni tratamientos.</p>
         <form className="space-y-3" onSubmit={askCoach}>
           <textarea className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base text-slate-800 outline-none focus:border-brand-500" rows="4" maxLength="1000" value={question} onChange={(event) => setQuestion(event.target.value)} />
