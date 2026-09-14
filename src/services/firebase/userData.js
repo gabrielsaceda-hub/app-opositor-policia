@@ -134,6 +134,9 @@ export async function saveUserActivity(uid, activityId, activity) {
     watts: String(activity.watts ?? '').slice(0, 20),
     day: String(activity.day ?? '').slice(0, 20),
     date: String(activity.date ?? '').slice(0, 10),
+    status: activity.status === 'no-realizada' ? 'no-realizada' : 'completada',
+    notes: String(activity.notes ?? '').slice(0, 500),
+    testId: String(activity.testId ?? '').slice(0, 40),
     source: activity.source === 'strava' ? 'strava' : 'manual',
     updatedAt: serverTimestamp(),
   }, { merge: true })
@@ -154,10 +157,13 @@ export function subscribeUserWellbeing(uid, onChange) {
   })
 }
 
+const SLEEP_QUALITIES = ['buena', 'regular', 'mala']
+
 export async function saveUserWellbeing(uid, wellbeingId, wellbeing) {
   await setDoc(doc(db, 'users', uid, 'wellbeing', wellbeingId), {
     date: String(wellbeing.date ?? '').slice(0, 10),
     sleepHours: String(wellbeing.sleepHours ?? '').slice(0, 4),
+    sleepQuality: SLEEP_QUALITIES.includes(wellbeing.sleepQuality) ? wellbeing.sleepQuality : '',
     fatigue: String(wellbeing.fatigue ?? '').slice(0, 4),
     soreness: String(wellbeing.soreness ?? '').slice(0, 4),
     updatedAt: serverTimestamp(),

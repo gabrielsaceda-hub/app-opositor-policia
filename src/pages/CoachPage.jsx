@@ -1,13 +1,19 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import AppButton from '../components/ui/AppButton'
 import SectionCard from '../components/ui/SectionCard'
 import { auth } from '../services/firebase/firebaseClient'
+import { buildAthleteSummary } from '../services/coach/athleteSummary'
 
 function CoachPage({ user, profile, savedMarks, activities, wellbeing }) {
   const [question, setQuestion] = useState('¿Qué debería priorizar esta semana?')
   const [answer, setAnswer] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const summary = useMemo(
+    () => buildAthleteSummary({ profile, savedMarks, activities, wellbeing }),
+    [profile, savedMarks, activities, wellbeing],
+  )
 
   const askCoach = async (event) => {
     event.preventDefault()
@@ -20,13 +26,17 @@ function CoachPage({ user, profile, savedMarks, activities, wellbeing }) {
       const response = await fetch('/api/coach', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, profile, marks: savedMarks, activities, wellbeing }),
+        body: JSON.stringify({ question, summary }),
       })
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error ?? 'coach-failed')
       setAnswer(payload.answer)
     } catch (requestError) {
-      setError(requestError.message === 'AI provider is not configured' ? 'El Coach IA todavía no está configurado por el administrador.' : 'No se pudo consultar el Coach IA.')
+      setError(requestError.message === 'AI provider is not configured'
+        ? 'El Coach IA todavía no está configurado por el administrador.'
+        : requestError.message === 'Daily Coach limit reached'
+          ? 'Has alcanzado el límite diario de consultas. Inténtalo mañana.'
+          : 'No se pudo consultar el Coach IA.')
     } finally {
       setLoading(false)
     }

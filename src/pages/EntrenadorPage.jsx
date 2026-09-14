@@ -42,8 +42,18 @@ function EntrenadorPage({ profile, savedMarks, activities, wellbeing, onGoProfil
           </p>
           <p>
             <strong>Examen previsto:</strong>{' '}
-            {plan.weeksToExam === null ? 'sin fecha definida' : `${plan.weeksToExam} semanas`}
+            {plan.daysToExam === null
+              ? 'sin fecha definida'
+              : `faltan ${plan.daysToExam} días${plan.examDateLabel ? ` (${plan.examDateLabel})` : ''}`}
           </p>
+          <div className="rounded-2xl bg-slate-50 p-3">
+            <p className="font-semibold text-slate-700">
+              Semana: {plan.progress.completed}/{plan.progress.planned} sesiones ({plan.progress.percent}%)
+            </p>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-valuenow={plan.progress.percent} aria-valuemin="0" aria-valuemax="100">
+              <div className="h-full rounded-full bg-brand-600" style={{ width: `${plan.progress.percent}%` }} />
+            </div>
+          </div>
           <p className="rounded-2xl bg-brand-50 p-3 font-semibold text-brand-900">
             Prioridad actual: {plan.mainPriority}
           </p>
@@ -63,9 +73,16 @@ function EntrenadorPage({ profile, savedMarks, activities, wellbeing, onGoProfil
       </SectionCard>
 
       {mode === 'today' ? (
-        <SectionCard title="Entreno de hoy" subtitle="Sesión recomendada según tu punto débil">
-          <SessionCard session={plan.today} />
-        </SectionCard>
+        <>
+          <SectionCard title={`Entreno de hoy${plan.today.date ? ` (${plan.today.date.split('-').reverse().join('/')})` : ''}`} subtitle="Sesión recomendada según tu punto débil">
+            <SessionCard session={plan.today} />
+          </SectionCard>
+          {plan.tomorrow ? (
+            <SectionCard title={`Mañana: ${plan.tomorrow.day}`} subtitle={`Carga ${plan.tomorrow.load}`}>
+              <SessionCard session={plan.tomorrow} />
+            </SectionCard>
+          ) : null}
+        </>
       ) : (
         <SectionCard title="Plan semanal" subtitle="Distribuido según tus días disponibles">
           <div className="space-y-3">

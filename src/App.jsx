@@ -266,6 +266,7 @@ function App() {
         <CalendarioPage
           profile={profile}
           user={user}
+          savedMarks={savedMarks}
           activities={activities}
           wellbeing={wellbeing}
           onSaveActivity={handleSaveActivity}

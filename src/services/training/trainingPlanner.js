@@ -1,6 +1,8 @@
 import { getTestsForSelection } from '../../data/tests'
+import { getResultadoByBody } from '../calculator/getResultadoByBody'
 
 const defaultDays = ['Lunes', 'Miércoles', 'Viernes']
+const WEEK_ORDER = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 
 function getWeeksToExam(profile) {
   if (profile.fechaTipo === 'concreta' && profile.fechaConcreta) {
@@ -10,8 +12,51 @@ function getWeeksToExam(profile) {
     return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24 * 7)))
   }
 
+  if (profile.semanasAprox === '' || profile.semanasAprox == null) return null
   const weeks = Number(profile.semanasAprox)
   return Number.isFinite(weeks) ? weeks : null
+}
+
+function getDaysToExam(profile) {
+  if (profile.fechaTipo === 'concreta' && profile.fechaConcreta) {
+    const examDate = new Date(profile.fechaConcreta)
+    const today = new Date()
+    const diffMs = examDate.setHours(0, 0, 0, 0) - today.setHours(0, 0, 0, 0)
+    return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
+  }
+  if (profile.semanasAprox === '' || profile.semanasAprox == null) return null
+  const weeks = Number(profile.semanasAprox)
+  return Number.isFinite(weeks) ? Math.max(0, Math.round(weeks * 7)) : null
+}
+
+export function formatExamDate(profile) {
+  if (profile.fechaTipo === 'concreta' && profile.fechaConcreta) {
+    const [y, m, d] = String(profile.fechaConcreta).split('-')
+    if (y && m && d) return `${d}/${m}/${y}`
+  }
+  return ''
+}
+
+function getCurrentWeekDates() {
+  const now = new Date()
+  const currentDay = now.getDay() === 0 ? 6 : now.getDay() - 1
+  const monday = new Date(now)
+  monday.setHours(0, 0, 0, 0)
+  monday.setDate(now.getDate() - currentDay)
+  const dates = {}
+  WEEK_ORDER.forEach((day, index) => {
+    const date = new Date(monday)
+    date.setDate(monday.getDate() + index)
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const dayNum = String(date.getDate()).padStart(2, '0')
+    dates[day] = `${year}-${month}-${dayNum}`
+  })
+  return dates
+}
+
+export function getTodayName() {
+  return WEEK_ORDER[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1]
 }
 
 function getPhase(weeksToExam) {
@@ -28,6 +73,16 @@ function getLatestMark(savedMarks, testId, profile) {
   )
 }
 
+// Prioridad por puntos perdidos según baremo, no por déficit bruto:
+// una prueba con nota 4/10 pierde 6 puntos gane o pierda por poco;
+// un apto/no apto no superado equivale a perder los 10 puntos.
+function getLostPoints({ cuerpoId, sexo, pruebaId, mark, edad }) {
+  const calc = getResultadoByBody({ cuerpoId, sexo, pruebaId, mark, edad })
+  if (!calc.ok) return null
+  if (calc.tipo === 'puntos' && typeof calc.nota === 'number') return Math.max(0, 10 - calc.nota)
+  return calc.esApto ? 0 : 10
+}
+
 function getWeaknesses(profile, savedMarks) {
   const tests = getTestsForSelection(profile.cuerpoObjetivo, profile.sexo)
 
@@ -35,13 +90,25 @@ function getWeaknesses(profile, savedMarks) {
     .map((test) => {
       const latest = getLatestMark(savedMarks, test.id, profile)
       const note = typeof latest?.nota === 'number' ? latest.nota : null
-      const priority = latest ? (note === null ? 5 : Math.max(1, 10 - note)) : 11
+      let lost = null
+      if (latest && typeof latest.marcaNormalizada === 'number') {
+        lost = getLostPoints({
+          cuerpoId: profile.cuerpoObjetivo,
+          sexo: profile.sexo,
+          pruebaId: test.id,
+          mark: latest.marcaNormalizada,
+          edad: Number(profile.edad),
+        })
+      }
+      // Sin marca: máxima prioridad. Con marca pero sin baremo: prioridad media.
+      const priority = !latest ? 11 : lost === null ? (note === null ? 5 : Math.max(1, 10 - note)) : Math.max(0.5, lost)
 
       return {
         test,
         latest,
         priority,
         note,
+        lost,
       }
     })
     .sort((a, b) => b.priority - a.priority)
@@ -140,34 +207,47 @@ function buildWeeklyPlan(profile, weaknesses, phase) {
   })
 }
 
+function getRecentLoad(activities) {
+  return (activities ?? []).reduce((sum, activity) => {
+    const date = activity.date ? new Date(`${activity.date}T23:59:59`) : null
+    const recent = date && !Number.isNaN(date.getTime()) && Date.now() - date.getTime() <= 7 * 24 * 60 * 60 * 1000
+    return recent ? sum + (Number(activity.duration) || 0) * (Number(activity.rpe) || 0) : sum
+  }, 0)
+}
+
+function getSleepAverage(wellbeing) {
+  const values = (wellbeing ?? []).slice(0, 7).map((entry) => Number(entry.sleepHours)).filter((value) => Number.isFinite(value))
+  if (!values.length) return null
+  return Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10
+}
+
 function getRecoveryStatus(activities, wellbeing) {
   const latest = wellbeing?.[0]
   const sleepHours = Number(latest?.sleepHours)
   const fatigue = Number(latest?.fatigue)
   const soreness = Number(latest?.soreness)
   const lowRecovery = (Number.isFinite(sleepHours) && sleepHours < 6) || fatigue >= 8 || soreness >= 8
+  const recentLoad = getRecentLoad(activities)
+  const sleepAvg = getSleepAverage(wellbeing)
+  const detail = `Sueño: ${Number.isFinite(sleepHours) ? `${sleepHours} h` : '—'} (media 7d: ${sleepAvg ?? '—'} h) · Fatiga: ${Number.isFinite(fatigue) ? `${fatigue}/10` : '—'} · Carga 7d: ${recentLoad}.`
 
   if (lowRecovery) {
     return {
       level: 'alta',
-      message: 'Recuperación baja registrada: prioriza técnica, movilidad y descanso. No fuerces máximos.',
+      recentLoad,
+      message: `Recuperación baja registrada. ${detail} Prioriza técnica, movilidad y descanso. No fuerces máximos.`,
     }
   }
-
-  const recentLoad = (activities ?? []).reduce((sum, activity) => {
-    const date = activity.date ? new Date(`${activity.date}T23:59:59`) : null
-    const recent = date && !Number.isNaN(date.getTime()) && Date.now() - date.getTime() <= 7 * 24 * 60 * 60 * 1000
-    return recent ? sum + (Number(activity.duration) || 0) * (Number(activity.rpe) || 0) : sum
-  }, 0)
 
   if (recentLoad >= 1800) {
     return {
       level: 'moderada',
-      message: 'La carga reciente es elevada: alterna sesiones de calidad con recuperación.',
+      recentLoad,
+      message: `Carga reciente elevada. ${detail} Alterna sesiones de calidad con recuperación.`,
     }
   }
 
-  return { level: 'normal', message: 'Sin señales de recuperación baja en los registros disponibles.' }
+  return { level: 'normal', recentLoad, message: `Sin señales de recuperación baja. ${detail}` }
 }
 
 function getNutrition(profile) {
@@ -196,10 +276,13 @@ export function buildTrainingPlan({ profile, savedMarks, activities = [], wellbe
   }
 
   const weeksToExam = getWeeksToExam(profile)
+  const daysToExam = getDaysToExam(profile)
+  const examDateLabel = formatExamDate(profile)
   const phase = getPhase(weeksToExam)
   const weaknesses = getWeaknesses(profile, savedMarks)
   const mainWeakness = weaknesses[0]
   const recovery = getRecoveryStatus(activities, wellbeing)
+  const weeklyPlan = buildWeeklyPlan(profile, weaknesses, phase)
   const today = mainWeakness
     ? getSessionForTest(mainWeakness.test.nombre, { profile, phase })
     : getSessionForTest('resistencia general', { profile, phase })
@@ -212,15 +295,36 @@ export function buildTrainingPlan({ profile, savedMarks, activities = [], wellbe
       }
     : today
 
+  const weekDates = getCurrentWeekDates()
+  const todayName = getTodayName()
+  const doneDays = new Set(
+    (activities ?? [])
+      .filter((activity) => activity.date && activity.status !== 'no-realizada')
+      .map((activity) => activity.date),
+  )
+  const progress = {
+    planned: weeklyPlan.length,
+    completed: weeklyPlan.filter((session) => doneDays.has(weekDates[session.day])).length,
+    percent: weeklyPlan.length ? Math.round((weeklyPlan.filter((session) => doneDays.has(weekDates[session.day])).length / weeklyPlan.length) * 100) : 0,
+  }
+  const orderIndex = WEEK_ORDER.indexOf(todayName)
+  const nextSession = weeklyPlan.find((session) => WEEK_ORDER.indexOf(session.day) > orderIndex) ?? null
+
   return {
     ok: true,
     weeksToExam,
+    daysToExam,
+    examDateLabel,
     phase,
     mainPriority: mainWeakness
-      ? `${mainWeakness.test.nombre}: ${mainWeakness.latest ? `última nota ${mainWeakness.note?.toFixed?.(2) ?? 'sin nota'}` : 'sin marca registrada'}.`
+      ? (typeof mainWeakness.lost === 'number'
+        ? `${mainWeakness.test.nombre}: pierdes ~${Math.round(mainWeakness.lost * 10) / 10} puntos según baremo.`
+        : `${mainWeakness.test.nombre}: ${mainWeakness.latest ? `última nota ${mainWeakness.note?.toFixed?.(2) ?? 'sin nota'}` : 'sin marca registrada'}.`)
       : 'Registra marcas para priorizar mejor.',
-    today: adjustedToday,
-    weeklyPlan: buildWeeklyPlan(profile, weaknesses, phase),
+    today: { ...adjustedToday, day: todayName, date: weekDates[todayName] },
+    tomorrow: nextSession ? { ...nextSession, date: weekDates[nextSession.day] } : null,
+    progress,
+    weeklyPlan,
     nutrition: getNutrition(profile),
     recovery,
     safetyNotes: [

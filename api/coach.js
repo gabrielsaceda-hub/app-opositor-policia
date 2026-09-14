@@ -1,7 +1,12 @@
 import { requireUser } from './_lib/auth.js'
+import { getAdminDb } from './_lib/firebaseAdmin.js'
 
-function sanitize(value, max = 5000) {
+function sanitize(value, max = 3000) {
   return JSON.stringify(value ?? null).slice(0, max)
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10)
 }
 
 export default async function handler(request, response) {
@@ -25,7 +30,27 @@ export default async function handler(request, response) {
     response.status(400).json({ error: 'Question is required' })
     return
   }
-  const context = {
+  // Tope diario por usuario para acotar coste.
+  const limit = Number(process.env.COACH_DAILY_LIMIT) || 10
+  try {
+    const usageRef = getAdminDb().collection('users').doc(user.uid).collection('coachUsage').doc(todayKey())
+    const allowed = await getAdminDb().runTransaction(async (tx) => {
+      const snapshot = await tx.get(usageRef)
+      const count = Number(snapshot.exists ? snapshot.data().count : 0) || 0
+      if (count >= limit) return false
+      tx.set(usageRef, { count: count + 1 }, { merge: true })
+      return true
+    })
+    if (!allowed) {
+      response.status(429).json({ error: 'Daily Coach limit reached' })
+      return
+    }
+  } catch {
+    response.status(500).json({ error: 'Could not check Coach usage' })
+    return
+  }
+  // Resumen computado en cliente; se acepta el formato anterior por compatibilidad.
+  const context = body.summary ?? {
     profile: body.profile,
     marks: body.marks,
     activities: body.activities,

@@ -3,6 +3,8 @@ import AppButton from '../components/ui/AppButton'
 import FormField from '../components/ui/FormField'
 import SectionCard from '../components/ui/SectionCard'
 import { auth } from '../services/firebase/firebaseClient'
+import { getTestsForSelection } from '../data/tests'
+import { buildTrainingPlan } from '../services/training/trainingPlanner'
 
 const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 const inputClass =
@@ -15,6 +17,10 @@ function formatLocalDate(date) {
   return `${year}-${month}-${day}`
 }
 
+function todayStr() {
+  return formatLocalDate(new Date())
+}
+
 function getWeekDate(dayIndex) {
   const now = new Date()
   const currentDay = now.getDay() === 0 ? 6 : now.getDay() - 1
@@ -24,7 +30,7 @@ function getWeekDate(dayIndex) {
   return formatLocalDate(monday)
 }
 
-function getPlannedSession(day, profile) {
+function legacyPlannedSession(day, profile) {
   const available = profile.diasEntreno?.length ? profile.diasEntreno : ['Lunes', 'Miércoles', 'Viernes']
   if (!available.includes(day)) return null
   const index = available.indexOf(day)
@@ -37,18 +43,37 @@ function getPlannedSession(day, profile) {
   return templates[index % templates.length]
 }
 
+function loadToNumber(load) {
+  if (/suave/i.test(load)) return 40
+  if (/moderada/i.test(load)) return 65
+  return 75
+}
+
 function calculateActivityLoad(activity) {
   const duration = Number(activity.duration) || 0
   const rpe = Number(activity.rpe) || 5
   return Math.round(duration * rpe)
 }
 
-function CalendarioPage({ user, profile, activities = [], wellbeing = [], onSaveActivity, onDeleteActivity, onSaveWellbeing, onSyncStrava }) {
+function isDoneActivity(activity) {
+  return activity.status !== 'no-realizada'
+}
+
+function CalendarioPage({ user, profile, savedMarks = [], activities = [], wellbeing = [], onSaveActivity, onDeleteActivity, onSaveWellbeing, onSyncStrava }) {
   const [selectedDay, setSelectedDay] = useState(null)
-  const [form, setForm] = useState({ sport: 'Carrera', distance: '', duration: '', avgHr: '', rpe: '6', watts: '' })
-  const [wellbeingForm, setWellbeingForm] = useState({ date: getWeekDate(new Date().getDay() === 0 ? 6 : new Date().getDay() - 1), sleepHours: '', fatigue: '5', soreness: '1' })
+  const [form, setForm] = useState({ sport: 'Carrera', distance: '', duration: '', avgHr: '', rpe: '6', watts: '', status: 'completada', notes: '', testId: '' })
+  const [wellbeingForm, setWellbeingForm] = useState({ date: getWeekDate(new Date().getDay() === 0 ? 6 : new Date().getDay() - 1), sleepHours: '', sleepQuality: '', fatigue: '5', soreness: '1' })
   const [message, setMessage] = useState('')
   const [stravaMessage, setStravaMessage] = useState(() => new URLSearchParams(window.location.search).get('strava') === 'connected' ? 'Strava conectado. Sincronizando actividades…' : '')
+
+  const plan = useMemo(
+    () => buildTrainingPlan({ profile, savedMarks, activities, wellbeing }),
+    [profile, savedMarks, activities, wellbeing],
+  )
+  const availableTests = useMemo(
+    () => getTestsForSelection(profile.cuerpoObjetivo, profile.sexo),
+    [profile.cuerpoObjetivo, profile.sexo],
+  )
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -59,41 +84,94 @@ function CalendarioPage({ user, profile, activities = [], wellbeing = [], onSave
       .catch(() => setStravaMessage('Strava conectado, pero no se pudieron sincronizar las actividades.'))
   }, [onSyncStrava])
 
-  const plannedWeek = useMemo(
-    () => days.map((day, index) => {
+  const plannedWeek = useMemo(() => {
+    const today = todayStr()
+    const week = days.map((day, index) => {
       const date = getWeekDate(index)
-      return {
-        day,
-        date,
-        planned: getPlannedSession(day, profile),
-        activity: activities.find((item) => item.date === date) ?? activities.find((item) => !item.date && item.day === day),
+      let planned = null
+      if (plan.ok) {
+        const session = plan.weeklyPlan.find((item) => item.day === day)
+        if (session) {
+          planned = { type: 'plan', title: session.title, load: loadToNumber(session.load), detail: session.load }
+        }
+      } else {
+        planned = legacyPlannedSession(day, profile)
       }
-    }),
-    [activities, profile],
-  )
+      const dayActivities = activities
+        .filter((item) => item.date === date || (!item.date && item.day === day))
+        .sort((a, b) => String(a.id ?? '').localeCompare(String(b.id ?? '')))
+      return { day, date, planned, reubicada: null, activities: dayActivities }
+    })
+
+    // Reubicación real: la primera sesión omitida con fecha pasada se mueve
+    // al primer día de descanso disponible de la misma semana.
+    const missed = week.filter((item) => item.planned && item.date < today && !item.activities.some(isDoneActivity))
+    const restDays = week.filter((item) => !item.planned && item.date >= today && !item.activities.some(isDoneActivity))
+    let moved = null
+    if (missed.length > 0 && restDays.length > 0) {
+      const target = restDays[0]
+      target.planned = { ...missed[0].planned }
+      target.reubicada = missed[0].day
+      moved = { from: missed[0].day, to: target.day }
+    }
+
+    return { week, moved }
+  }, [activities, plan, profile])
 
   const metrics = useMemo(() => {
-    const plannedLoad = plannedWeek.reduce((sum, item) => sum + (item.planned?.load ?? 0), 0)
-    const realLoad = plannedWeek.reduce((sum, item) => sum + (item.activity ? calculateActivityLoad(item.activity) : 0), 0)
-    const missed = plannedWeek.filter((item) => item.planned && !item.activity).length
-    const completed = plannedWeek.filter((item) => item.activity).length
+    const { week, moved } = plannedWeek
+    const plannedLoad = week.reduce((sum, item) => sum + (item.planned?.load ?? 0), 0)
+    const realLoad = week.reduce(
+      (sum, item) => sum + item.activities.filter(isDoneActivity).reduce((inner, activity) => inner + calculateActivityLoad(activity), 0),
+      0,
+    )
+    const missed = week.filter((item) => item.planned && !item.activities.some(isDoneActivity)).length
+    const completed = week.filter((item) => item.activities.some(isDoneActivity)).length
     const fatigue = plannedLoad ? Math.round((realLoad / plannedLoad) * 100) : 0
     const recommendation =
       fatigue > 125
         ? 'Riesgo de sobreentrenamiento: reduce intensidad o toma descanso.'
-        : fatigue < 65 && missed > 0
-          ? 'Carga baja: reubica una sesión suave en los días disponibles restantes.'
-          : completed >= 3
-            ? 'Semana equilibrada: mantén recuperación y técnica.'
-            : 'Empieza completando las sesiones clave sin forzar máximos.'
+        : moved
+          ? `Carga baja: se ha reubicado la sesión de ${moved.from} en ${moved.to}.`
+          : fatigue < 65 && missed > 0
+            ? 'Carga baja: completa alguna sesión pendiente sin forzar máximos.'
+            : completed >= 3
+              ? 'Semana equilibrada: mantén recuperación y técnica.'
+              : 'Empieza completando las sesiones clave sin forzar máximos.'
 
-    return { plannedLoad, realLoad, missed, completed, fatigue, recommendation }
+    return { plannedLoad, realLoad, missed, completed, fatigue, recommendation, moved }
   }, [plannedWeek])
+
+  const findFreeActivityId = (date) => {
+    if (!activities.some((item) => item.id === date)) return date
+    let index = 2
+    while (activities.some((item) => item.id === `${date}-${index}`)) index += 1
+    return `${date}-${index}`
+  }
+
+  const emptyForm = { sport: 'Carrera', distance: '', duration: '', avgHr: '', rpe: '6', watts: '', status: 'completada', notes: '', testId: '' }
 
   const openDay = ({ day, date }) => {
     const current = activities.find((item) => item.date === date) ?? activities.find((item) => !item.date && item.day === day)
-    setSelectedDay({ day, date, activityId: current?.id ?? date })
-    setForm(current ?? { sport: 'Carrera', distance: '', duration: '', avgHr: '', rpe: '6', watts: '' })
+    setSelectedDay({ day, date, activityId: current?.id ?? date, isExtra: false })
+    setForm(current ? {
+      sport: current.sport ?? 'Carrera',
+      distance: current.distance ?? '',
+      duration: current.duration ?? '',
+      avgHr: current.avgHr ?? '',
+      rpe: current.rpe ?? '6',
+      watts: current.watts ?? '',
+      status: current.status ?? 'completada',
+      notes: current.notes ?? '',
+      testId: current.testId ?? '',
+    } : { ...emptyForm })
+    setMessage('')
+  }
+
+  const addExtraSession = () => {
+    if (!selectedDay) return
+    setSelectedDay({ ...selectedDay, activityId: findFreeActivityId(selectedDay.date), isExtra: true })
+    setForm({ ...emptyForm })
     setMessage('')
   }
 
@@ -109,7 +187,7 @@ function CalendarioPage({ user, profile, activities = [], wellbeing = [], onSave
     }
     try {
       await onSaveActivity(selectedDay.activityId, { ...form, day: selectedDay.day, date: selectedDay.date, source: 'manual' })
-      setMessage('Actividad guardada en tu cuenta.')
+      setMessage(form.status === 'no-realizada' ? 'Sesión marcada como no realizada.' : 'Actividad guardada en tu cuenta.')
     } catch {
       setMessage('No se pudo guardar la actividad. Revisa Firebase e inténtalo de nuevo.')
       return
@@ -164,16 +242,18 @@ function CalendarioPage({ user, profile, activities = [], wellbeing = [], onSave
     setStravaMessage(`Sincronización completada: ${count ?? 0} actividades.`)
   }
 
+  const today = todayStr()
+
   return (
     <div className="space-y-4">
       <SectionCard title="Calendario inteligente" subtitle="Plan semanal, Strava y registro manual">
         <div className="grid gap-3 sm:grid-cols-2">
-           <AppButton type="button" onClick={connectStrava}>Conectar con Strava</AppButton>
-           <AppButton type="button" variant="secondary" onClick={syncStrava}>Sincronizar Strava</AppButton>
-           <AppButton type="button" variant="secondary" onClick={() => {
-             const index = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1
-             openDay(plannedWeek[index])
-           }}>
+          <AppButton type="button" onClick={connectStrava}>Conectar con Strava</AppButton>
+          <AppButton type="button" variant="secondary" onClick={syncStrava}>Sincronizar Strava</AppButton>
+          <AppButton type="button" variant="secondary" onClick={() => {
+            const index = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1
+            openDay(plannedWeek.week[index])
+          }}>
             Añadir actividad manual
           </AppButton>
         </div>
@@ -198,31 +278,50 @@ function CalendarioPage({ user, profile, activities = [], wellbeing = [], onSave
           <FormField label="Horas de sueño">
             <input className={inputClass} type="number" min="0" max="24" step="0.5" value={wellbeingForm.sleepHours} onChange={(event) => setWellbeingForm((prev) => ({ ...prev, sleepHours: event.target.value }))} />
           </FormField>
+          <FormField label="Calidad de sueño">
+            <select className={inputClass} value={wellbeingForm.sleepQuality} onChange={(event) => setWellbeingForm((prev) => ({ ...prev, sleepQuality: event.target.value }))}>
+              <option value="">Sin indicar</option>
+              <option value="buena">Buena</option>
+              <option value="regular">Regular</option>
+              <option value="mala">Mala</option>
+            </select>
+          </FormField>
           <FormField label="Fatiga percibida 1-10">
             <input className={inputClass} type="number" min="1" max="10" value={wellbeingForm.fatigue} onChange={(event) => setWellbeingForm((prev) => ({ ...prev, fatigue: event.target.value }))} />
           </FormField>
           <FormField label="Molestias 1-10">
             <input className={inputClass} type="number" min="1" max="10" value={wellbeingForm.soreness} onChange={(event) => setWellbeingForm((prev) => ({ ...prev, soreness: event.target.value }))} />
           </FormField>
-          <div className="sm:col-span-2">
+          <div>
             <AppButton type="submit">Guardar bienestar</AppButton>
           </div>
         </form>
-        {wellbeing.length > 0 ? <p className="mt-3 text-xs text-slate-500">Último registro: {wellbeing[0].date} · sueño {wellbeing[0].sleepHours || '—'} h · fatiga {wellbeing[0].fatigue || '—'}/10</p> : null}
+        {wellbeing.length > 0 ? <p className="mt-3 text-xs text-slate-500">Último registro: {wellbeing[0].date} · sueño {wellbeing[0].sleepHours || '—'} h{wellbeing[0].sleepQuality ? ` (${wellbeing[0].sleepQuality})` : ''} · fatiga {wellbeing[0].fatigue || '—'}/10</p> : null}
       </SectionCard>
 
       <SectionCard title="Semana" subtitle="Pulsa un día para completar o ajustar datos">
         <div className="grid gap-3 md:grid-cols-2">
-          {plannedWeek.map((item) => (
+          {plannedWeek.week.map((item) => (
             <button
               key={item.day}
               type="button"
               className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left text-sm text-slate-700"
-               onClick={() => openDay(item)}
+              onClick={() => openDay(item)}
             >
-              <p className="font-extrabold text-brand-900">{item.day}</p>
-              <p>Plan: {item.planned ? `${item.planned.title} (${item.planned.type})` : 'Descanso / movilidad opcional'}</p>
-              <p>Real: {item.activity ? `${item.activity.sport} · ${item.activity.duration} min · RPE ${item.activity.rpe}` : 'Sin completar'}</p>
+              <p className="font-extrabold text-brand-900">
+                {item.day}{item.date === today ? ' · Hoy' : ''}
+              </p>
+              <p>Plan: {item.planned ? `${item.planned.title}` : 'Descanso / movilidad opcional'}{item.reubicada ? ` (reubicada de ${item.reubicada})` : ''}</p>
+              {item.activities.length === 0 ? (
+                <p>Real: Sin completar</p>
+              ) : (
+                item.activities.map((activity) => (
+                  <p key={activity.id}>
+                    Real: {activity.sport} · {activity.duration} min · RPE {activity.rpe}
+                    {activity.status === 'no-realizada' ? ' (no realizada)' : ''}
+                  </p>
+                ))
+              )}
             </button>
           ))}
         </div>
@@ -235,18 +334,40 @@ function CalendarioPage({ user, profile, activities = [], wellbeing = [], onSave
           <form className="max-h-[90svh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl" onSubmit={saveActivity}>
             <h2 className="text-xl font-extrabold text-brand-900">Actividad de {selectedDay.day}</h2>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <FormField label="Estado">
+                <select className={inputClass} value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}>
+                  <option value="completada">Completada</option>
+                  <option value="no-realizada">No realizada</option>
+                </select>
+              </FormField>
+              <FormField label="Prueba relacionada">
+                <select className={inputClass} value={form.testId} onChange={(e) => setForm((p) => ({ ...p, testId: e.target.value }))}>
+                  <option value="">Sin prueba</option>
+                  {availableTests.map((test) => (
+                    <option key={test.id} value={test.id}>{test.nombre}</option>
+                  ))}
+                </select>
+              </FormField>
               <FormField label="Deporte"><input className={inputClass} value={form.sport} onChange={(e) => setForm((p) => ({ ...p, sport: e.target.value }))} /></FormField>
               <FormField label="Distancia (km)"><input className={inputClass} type="number" step="0.01" value={form.distance} onChange={(e) => setForm((p) => ({ ...p, distance: e.target.value }))} /></FormField>
               <FormField label="Duración (min)"><input className={inputClass} type="number" value={form.duration} onChange={(e) => setForm((p) => ({ ...p, duration: e.target.value }))} /></FormField>
               <FormField label="FC media"><input className={inputClass} type="number" value={form.avgHr} onChange={(e) => setForm((p) => ({ ...p, avgHr: e.target.value }))} /></FormField>
               <FormField label="RPE 1-10"><input className={inputClass} type="number" min="1" max="10" value={form.rpe} onChange={(e) => setForm((p) => ({ ...p, rpe: e.target.value }))} /></FormField>
               <FormField label="Vatios"><input className={inputClass} type="number" value={form.watts} onChange={(e) => setForm((p) => ({ ...p, watts: e.target.value }))} /></FormField>
+              <div className="sm:col-span-2">
+                <FormField label="Notas"><input className={inputClass} value={form.notes} placeholder="Sensaciones, series, incidencias…" onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} /></FormField>
+              </div>
             </div>
             <div className="mt-4 grid grid-cols-3 gap-2">
               <AppButton type="submit">Guardar</AppButton>
               <AppButton type="button" variant="secondary" onClick={removeActivity}>Borrar</AppButton>
               <AppButton type="button" variant="secondary" onClick={() => setSelectedDay(null)}>Cerrar</AppButton>
             </div>
+            {!selectedDay.isExtra ? (
+              <div className="mt-2">
+                <AppButton type="button" variant="secondary" onClick={addExtraSession}>＋ Añadir otra sesión este día</AppButton>
+              </div>
+            ) : null}
           </form>
         </div>
       ) : null}
