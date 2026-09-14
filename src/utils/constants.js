@@ -14,9 +14,9 @@ export const navigationTabs = [
 ]
 
 export const cuerpos = [
-  { id: 'plm', nombre: 'Policía Local de Madrid' },
-  { id: 'pn', nombre: 'Policía Nacional' },
-  { id: 'gc', nombre: 'Guardia Civil' },
+  { id: 'plm', nombre: 'Policía Local de Madrid', convocatoria: 'BOAM de 28/02/2025' },
+  { id: 'pn', nombre: 'Policía Nacional', convocatoria: 'Convocatoria 2025' },
+  { id: 'gc', nombre: 'Guardia Civil', convocatoria: 'Convocatoria 2025 (BOE)' },
 ]
 
 export const sexos = ['Hombre', 'Mujer']

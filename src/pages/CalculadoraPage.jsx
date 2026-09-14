@@ -16,6 +16,8 @@ const inputClass =
 
 function getPlaceholder(test) {
   if (!test) return 'Selecciona cuerpo y sexo primero'
+  if (test?.id === 'gc-natacion') return 'Ejemplo: 70'
+  if (test?.id === 'gc-2000') return 'Ejemplo: 9:25'
   if (test.tipoEntrada === 'time') {
     return test.formatoTiempo === 'minutesSeconds' ? 'Ejemplo: 3:25 o 3.25' : 'Ejemplo: 7.84'
   }
@@ -30,12 +32,14 @@ function CalculadoraPage({ profile, user, onSaveMark, onGoProfile }) {
   const [sexo, setSexo] = useState(profile?.sexo ?? '')
   const [pruebaId, setPruebaId] = useState('')
   const [marca, setMarca] = useState('')
+  const [edad, setEdad] = useState(profile?.edad ?? '')
   const [error, setError] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
   const [result, setResult] = useState(null)
 
   const pruebas = useMemo(() => getTestsForSelection(cuerpoId, sexo), [cuerpoId, sexo])
   const selectedTest = useMemo(() => pruebas.find((t) => t.id === pruebaId) ?? null, [pruebas, pruebaId])
+  const requiereEdad = useMemo(() => pruebas.some((t) => t.pideEdad), [pruebas])
 
   const onChangeBody = (e) => {
     setCuerpoId(e.target.value)
@@ -66,7 +70,7 @@ function CalculadoraPage({ profile, user, onSaveMark, onGoProfile }) {
   const onCalculate = (e) => {
     e.preventDefault()
 
-    const basic = validateForm({ cuerpoId, sexo, pruebaId, marca })
+    const basic = validateForm({ cuerpoId, sexo, pruebaId, marca, edad, requiereEdad })
     if (!basic.ok) {
       setError(basic.error)
       setResult(null)
@@ -91,6 +95,7 @@ function CalculadoraPage({ profile, user, onSaveMark, onGoProfile }) {
       sexo,
       pruebaId,
       mark: normalized.value,
+      edad: requiereEdad ? Number(edad) : undefined,
     })
 
     if (!calc.ok) {
@@ -99,12 +104,14 @@ function CalculadoraPage({ profile, user, onSaveMark, onGoProfile }) {
       return
     }
 
-    const cuerpoNombre = cuerpos.find((c) => c.id === cuerpoId)?.nombre ?? cuerpoId
+    const cuerpo = cuerpos.find((c) => c.id === cuerpoId)
+    const cuerpoNombre = cuerpo?.nombre ?? cuerpoId
     setError('')
     setSaveMessage('')
     setResult({
       ...calc,
       cuerpoNombre,
+      convocatoria: cuerpo?.convocatoria ?? '',
       cuerpoId,
       sexo,
       pruebaId,
@@ -204,6 +211,24 @@ function CalculadoraPage({ profile, user, onSaveMark, onGoProfile }) {
               disabled={!selectedTest}
             />
           </FormField>
+
+          {requiereEdad ? (
+            <FormField label="5. Edad">
+              <input
+                className={inputClass}
+                type="number"
+                min="16"
+                max="65"
+                value={edad}
+                placeholder="Ejemplo: 28"
+                onChange={(e) => {
+                  setEdad(e.target.value)
+                  setResult(null)
+                  setError('')
+                }}
+              />
+            </FormField>
+          ) : null}
 
           {error ? <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p> : null}
           {saveMessage ? <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">{saveMessage}</p> : null}

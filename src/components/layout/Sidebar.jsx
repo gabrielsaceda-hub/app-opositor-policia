@@ -1,4 +1,5 @@
 import AdSlot from '../ads/AdSlot'
+import { pathForTab } from '../../hooks/useAppNavigation'
 
 function Sidebar({ tabs, currentTab, onChangeTab }) {
   return (
@@ -9,16 +10,19 @@ function Sidebar({ tabs, currentTab, onChangeTab }) {
           {tabs.map((tab) => {
             const active = tab.id === currentTab
             return (
-              <button
+              <a
                 key={tab.id}
-                type="button"
-                className={`w-full rounded-2xl px-4 py-3 text-left text-sm font-bold transition ${
+                href={pathForTab(tab.id)}
+                className={`block w-full rounded-2xl px-4 py-3 text-left text-sm font-bold transition ${
                   active ? 'bg-brand-600 text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
                 }`}
-                onClick={() => onChangeTab(tab.id)}
+                onClick={(e) => {
+                  e.preventDefault()
+                  onChangeTab(tab.id)
+                }}
               >
                 {tab.label}
-              </button>
+              </a>
             )
           })}
         </div>

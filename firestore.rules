@@ -98,20 +98,30 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Marcas públicas anónimas e inmutables: la media se calcula leyendo estos registros.
+    // Marcas públicas anónimas e inmutables: sin UID ni datos personales.
+    // La propiedad se demuestra porque sourceMarkId es el ID de una marca
+    // privada del propio usuario.
     match /publicMarks/{markId} {
       allow read: if true;
       allow create: if request.auth != null &&
-        request.resource.data.keys().hasOnly(['userId', 'sourceMarkId', 'testId', 'testName', 'sexo', 'mark', 'createdAt']) &&
-        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.keys().hasOnly(['sourceMarkId', 'testId', 'testName', 'sexo', 'mark', 'createdAt']) &&
         request.resource.data.sourceMarkId is string &&
-        markId == request.auth.uid + '_' + request.resource.data.sourceMarkId &&
+        request.resource.data.sourceMarkId.size() > 0 &&
+        request.resource.data.sourceMarkId.size() <= 128 &&
         request.resource.data.testId is string &&
+        request.resource.data.testId.matches('^(plm|pn|gc)-[a-z0-9-]+$') &&
         request.resource.data.testName is string &&
-        request.resource.data.sexo is string &&
-        request.resource.data.mark is number;
+        request.resource.data.testName.size() > 0 &&
+        request.resource.data.testName.size() <= 80 &&
+        request.resource.data.sexo in ['Hombre', 'Mujer'] &&
+        request.resource.data.mark is number &&
+        request.resource.data.mark > 0 &&
+        request.resource.data.mark < 100000;
       allow update: if false;
-      allow delete: if request.auth != null && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if request.auth != null && (
+        isAdmin() ||
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)/marks/$(resource.data.sourceMarkId))
+      );
     }
 
     match /{document=**} {

@@ -21,6 +21,7 @@ import RitmoBasePage from './pages/RitmoBasePage'
 import SobreContactoPage from './pages/SobreContactoPage'
 import PerfilPage from './pages/PerfilPage'
 import { useAppNavigation } from './hooks/useAppNavigation'
+import { applySeo } from './utils/seo'
 import { useFirebaseSession } from './hooks/useFirebaseSession'
 import { auth, logAnalyticsEvent } from './services/firebase/firebaseClient'
 import {
@@ -139,6 +140,7 @@ function App() {
   }, [changeTab, currentTab, isAdmin, isAdminLoading, isAuthLoading])
 
   useEffect(() => {
+    applySeo(currentTab)
     logAnalyticsEvent('page_view', { page_title: currentTab, page_location: window.location.href })
   }, [currentTab])
 
@@ -165,7 +167,6 @@ function App() {
     try {
       const markId = await addUserMark(user.uid, entry)
       await registerPublicRankingMark({
-        uid: user.uid,
         markId,
         testId: entry.pruebaId,
         testName: entry.pruebaNombre,

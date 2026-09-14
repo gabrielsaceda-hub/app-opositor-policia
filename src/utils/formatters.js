@@ -1,8 +1,12 @@
 export function formatSecondsAsMinSec(totalSeconds) {
-  const min = Math.floor(totalSeconds / 60)
-  const sec = totalSeconds - min * 60
-  const secText = sec.toFixed(2).replace(/\.00$/, '').padStart(2, '0')
-  return `${min}:${secText}`
+  const centiseconds = Math.round(Number(totalSeconds) * 100)
+  const min = Math.floor(centiseconds / 6000)
+  const rest = centiseconds - min * 6000
+  const sec = Math.floor(rest / 100)
+  const cs = rest - sec * 100
+  const secText = String(sec).padStart(2, '0')
+  if (cs === 0) return `${min}:${secText}`
+  return `${min}:${secText}.${String(cs).padStart(2, '0')}`
 }
 
 export function formatMarkDisplay(raw, normalized, testConfig) {

@@ -7,7 +7,7 @@ function tabFromPathname(pathname) {
   return navigationTabs.some((tab) => tab.id === segment) ? segment : 'inicio'
 }
 
-function pathForTab(tab) {
+export function pathForTab(tab) {
   return tab === 'inicio' ? '/' : `/${tab}`
 }
 

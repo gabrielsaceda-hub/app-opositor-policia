@@ -198,26 +198,36 @@ export async function addUserMark(uid, mark) {
   return created.id
 }
 
+// Los documentos públicos no contienen UID: se localizan por sourceMarkId,
+// que es el ID aleatorio de la marca privada y no permite correlacionar marcas.
+export async function deletePublicMarksBySource(sourceMarkId) {
+  const snapshot = await getDocs(query(collection(db, 'publicMarks'), where('sourceMarkId', '==', sourceMarkId)))
+  if (snapshot.empty) return
+  const batch = writeBatch(db)
+  snapshot.docs.forEach((docItem) => {
+    batch.delete(docItem.ref)
+  })
+  await batch.commit()
+}
+
 export async function clearUserMarks(uid) {
   const marksRef = collection(db, 'users', uid, 'marks')
   const marksSnapshot = await getDocs(marksRef)
 
   if (marksSnapshot.empty) return
 
-  const publicMarksSnapshot = await getDocs(query(collection(db, 'publicMarks'), where('userId', '==', uid)))
   const batch = writeBatch(db)
   marksSnapshot.docs.forEach((docItem) => {
     batch.delete(doc(marksRef, docItem.id))
   })
-  publicMarksSnapshot.docs.forEach((docItem) => batch.delete(docItem.ref))
-
   await batch.commit()
+  for (const docItem of marksSnapshot.docs) {
+    await deletePublicMarksBySource(docItem.id)
+  }
 }
 
 export async function deleteUserMark(uid, markId) {
-  const publicMarkRef = doc(db, 'publicMarks', `${uid}_${markId}`)
-  const publicMark = await getDoc(publicMarkRef)
-  if (publicMark.exists()) await deleteDoc(publicMarkRef)
+  await deletePublicMarksBySource(markId)
   await deleteDoc(doc(db, 'users', uid, 'marks', markId))
 }
 
@@ -260,8 +270,7 @@ export async function migrateAnonymousData(anonProfile, anonMarks, targetUid) {
     delete markData.id
     const createdMark = await addDoc(collection(db, 'users', targetUid, 'marks'), { ...markData, migrated: true })
     if (markData.pruebaId && markData.pruebaNombre && markData.sexo && Number.isFinite(Number(markData.marcaNormalizada))) {
-      await setDoc(doc(db, 'publicMarks', `${targetUid}_${createdMark.id}`), {
-        userId: targetUid,
+      await addDoc(collection(db, 'publicMarks'), {
         sourceMarkId: createdMark.id,
         testId: markData.pruebaId,
         testName: markData.pruebaNombre,
@@ -336,7 +345,11 @@ export function subscribePublicRankings(onChange) {
   }
 
   const unsubscribeMarks = onSnapshot(collection(db, 'publicMarks'), (snapshot) => {
-    publicMarks = snapshot.docs.map((item) => item.data())
+    // Solo se conservan los campos agregables: nunca UID ni metadatos.
+    publicMarks = snapshot.docs.map((item) => {
+      const data = item.data()
+      return { testId: data.testId, testName: data.testName, sexo: data.sexo, mark: data.mark }
+    })
     emit()
   })
   const unsubscribeLegacy = onSnapshot(collection(db, 'publicRankings'), (snapshot) => {
@@ -350,9 +363,8 @@ export function subscribePublicRankings(onChange) {
   }
 }
 
-export async function registerPublicRankingMark({ uid, markId, testId, testName, sexo, mark }) {
-  await setDoc(doc(db, 'publicMarks', `${uid}_${markId}`), {
-    userId: uid,
+export async function registerPublicRankingMark({ markId, testId, testName, sexo, mark }) {
+  await addDoc(collection(db, 'publicMarks'), {
     sourceMarkId: markId,
     testId,
     testName,

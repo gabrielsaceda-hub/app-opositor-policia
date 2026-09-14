@@ -4,6 +4,8 @@
 export const policiaNacionalBaremos = {
   'pn-circuito': {
     tipo: 'rangos',
+    direccion: 'lowerIsBetter',
+    precision: 0.1,
     porSexo: {
       Hombre: [
         { puntos: 0, min: 11.7, max: Infinity },
@@ -35,6 +37,8 @@ export const policiaNacionalBaremos = {
   },
   'pn-dominadas': {
     tipo: 'rangos',
+    direccion: 'higherIsBetter',
+    precision: 1,
     porSexo: {
       Hombre: [
         { puntos: 0, min: 0, max: 4 },
@@ -53,6 +57,8 @@ export const policiaNacionalBaremos = {
   },
   'pn-suspension-barra': {
     tipo: 'rangos',
+    direccion: 'higherIsBetter',
+    precision: 1,
     porSexo: {
       Mujer: [
         { puntos: 0, min: 0, max: 35 },
@@ -71,6 +77,8 @@ export const policiaNacionalBaremos = {
   },
   'pn-1000': {
     tipo: 'rangos',
+    direccion: 'lowerIsBetter',
+    precision: 1,
     porSexo: {
       Hombre: [
         { puntos: 0, min: 229, max: Infinity },

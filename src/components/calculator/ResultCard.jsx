@@ -15,6 +15,7 @@ function ResultCard({ result }) {
         <p><strong>Sexo:</strong> {result.sexo}</p>
         <p><strong>Prueba:</strong> {result.pruebaNombre}</p>
         <p><strong>Marca:</strong> {result.marcaMostrada}</p>
+        {result.convocatoria ? <p><strong>Baremo:</strong> {result.convocatoria}</p> : null}
       </div>
       <div className={`mt-4 rounded-2xl px-4 py-3 text-center text-lg font-extrabold ${statusClass}`}>
         {formatResultado(result)}
