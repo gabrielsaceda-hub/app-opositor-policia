@@ -1,6 +1,6 @@
 const SITE_ORIGIN = 'https://app-opositor-policia-bay.vercel.app'
 
-export const PUBLIC_TABS = new Set(['inicio', 'guia', 'calculadora', 'ritmo', 'sobre', 'privacidad'])
+export const PUBLIC_TABS = new Set(['inicio', 'guia', 'calculadora', 'simulacro', 'ritmo', 'sobre', 'privacidad'])
 
 const SEO_BY_TAB = {
   inicio: {
@@ -17,6 +17,11 @@ const SEO_BY_TAB = {
     title: 'Calculadora de baremos: nota de físicas Policía Nacional, Local y Guardia Civil',
     description:
       'Calcula gratis tu nota en las pruebas físicas: baremos de Policía Nacional, Policía Local de Madrid y Guardia Civil por sexo y edad.',
+  },
+  simulacro: {
+    title: 'Simulacro de pruebas físicas: nota total Policía Nacional, Local y Guardia Civil',
+    description:
+      'Simula gratis el día del examen: introduce todas tus marcas, obtén nota por prueba y total, detecta tu prueba limitante y guarda el histórico.',
   },
   ritmo: {
     title: 'Calculadora de ritmos 800 y 1000 metros | Parciales de carrera',

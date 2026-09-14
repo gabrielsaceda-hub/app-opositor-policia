@@ -2,6 +2,7 @@ export const navigationTabs = [
   { id: 'inicio', label: 'Inicio' },
   { id: 'guia', label: 'Guía' },
   { id: 'calculadora', label: 'Calcular' },
+  { id: 'simulacro', label: 'Simulacro' },
   { id: 'calendario', label: 'Calendario' },
   { id: 'entrenador', label: 'Entrenador' },
   { id: 'coach', label: 'Coach IA' },

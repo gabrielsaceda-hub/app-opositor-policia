@@ -4,7 +4,8 @@ import FormField from '../components/ui/FormField'
 import SectionCard from '../components/ui/SectionCard'
 import { ADMIN_EMAILS } from '../config/admin'
 import { cuerpos, sexos } from '../utils/constants'
-import { getTestsForSelection } from '../data/tests'
+import { getTestById, getTestsForSelection } from '../data/tests'
+import { formatNormalizedMarkByTest } from '../utils/formatters'
 import { generateTrainingReport } from '../utils/reportGenerator'
 
 const inputClass =
@@ -114,6 +115,44 @@ function ProfilePage({
     () => getTestsForSelection(form.cuerpoObjetivo, form.sexo),
     [form.cuerpoObjetivo, form.sexo],
   )
+
+  // Récords personales: mejor marca por prueba con fecha, anterior y evolución.
+  // 100% cliente a partir del historial guardado; no crea colecciones nuevas.
+  const records = useMemo(() => {
+    const byTest = {}
+    for (const mark of savedMarks) {
+      if (typeof mark.marcaNormalizada !== 'number') continue
+      if (!byTest[mark.pruebaId]) byTest[mark.pruebaId] = []
+      byTest[mark.pruebaId].push(mark)
+    }
+
+    return Object.entries(byTest)
+      .map(([pruebaId, marks]) => {
+        const test = getTestById(pruebaId)
+        const lowerIsBetter = !test || test.direccion !== 'higherIsBetter'
+        const byDate = [...marks].sort((a, b) => String(a.fecha ?? '').localeCompare(String(b.fecha ?? '')))
+        const ranked = [...marks].sort((a, b) => lowerIsBetter
+          ? a.marcaNormalizada - b.marcaNormalizada
+          : b.marcaNormalizada - a.marcaNormalizada)
+        const best = ranked[0]
+        const bestIndex = byDate.findIndex((item) => item.id === best.id)
+        const previous = bestIndex > 0 ? byDate[bestIndex - 1] : null
+        const delta = previous ? best.marcaNormalizada - previous.marcaNormalizada : null
+        const improves = delta === null ? null : lowerIsBetter ? delta < 0 : delta > 0
+
+        return {
+          pruebaId,
+          pruebaNombre: best.pruebaNombre ?? test?.nombre ?? pruebaId,
+          test,
+          best,
+          previous,
+          delta,
+          improves,
+          count: marks.length,
+        }
+      })
+      .sort((a, b) => String(a.pruebaNombre).localeCompare(String(b.pruebaNombre)))
+  }, [savedMarks])
 
   const report = useMemo(
     () => generateTrainingReport({ profile: form, savedMarks }),
@@ -619,6 +658,38 @@ function ProfilePage({
           </div>
         ) : (
           <p className="mt-3 text-sm text-slate-500">Aún no hay marcas guardadas.</p>
+        )}
+      </SectionCard>
+
+      <SectionCard title="Récords personales" subtitle="Tu mejor marca por prueba, estilo Strava">
+        {records.length === 0 ? (
+          <p className="text-sm text-slate-500">Todavía no hay marcas para calcular récords.</p>
+        ) : (
+          <div className="space-y-2">
+            {records.map((record) => (
+              <article key={record.pruebaId} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                <p>
+                  <strong>{record.pruebaNombre}</strong> — {formatNormalizedMarkByTest(record.best.marcaNormalizada, record.test)}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {formatDate(record.best.fecha)} · {record.count} {record.count === 1 ? 'registro' : 'registros'}
+                  {record.best.tipoResultado === 'puntos' && typeof record.best.nota === 'number'
+                    ? ` · ${record.best.nota.toFixed(2)} puntos`
+                    : record.best.tipoResultado === 'aptoNoApto'
+                      ? ` · ${record.best.esApto ? 'Apto' : 'No apto'}`
+                      : ''}
+                </p>
+                {record.previous ? (
+                  <p className="text-xs text-slate-500">
+                    Anterior: {formatNormalizedMarkByTest(record.previous.marcaNormalizada, record.test)} ({formatDate(record.previous.fecha)})
+                    {record.delta !== null ? ` · ${record.improves ? 'mejora' : 'empeora'}: ${record.delta > 0 ? '+' : ''}${record.delta.toFixed(2)}` : ''}
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-500">Primera marca registrada en esta prueba.</p>
+                )}
+              </article>
+            ))}
+          </div>
         )}
       </SectionCard>
 

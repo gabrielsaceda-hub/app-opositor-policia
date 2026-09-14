@@ -11,6 +11,7 @@ import { ensureUserMetadata } from './services/firebase/userData'
 import InicioPage from './pages/InicioPage'
 import AdminPage from './pages/AdminPage'
 import CalculadoraPage from './pages/CalculadoraPage'
+import SimulacroPage from './pages/SimulacroPage'
 import CalendarioPage from './pages/CalendarioPage'
 import CoachPage from './pages/CoachPage'
 import EntrenadorPage from './pages/EntrenadorPage'
@@ -180,6 +181,39 @@ function App() {
     }
   }
 
+  const handleSaveSimulacro = async ({ cuerpoId, cuerpoNombre, sexo, marks, publish }) => {
+    if (!user?.uid) return
+
+    try {
+      const simulacroId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+      const simulacroFecha = new Date().toISOString()
+      for (const mark of marks) {
+        const markId = await addUserMark(user.uid, {
+          ...mark,
+          cuerpoId,
+          cuerpoNombre,
+          sexo,
+          simulacroId,
+          simulacroFecha,
+        })
+        if (publish) {
+          await registerPublicRankingMark({
+            markId,
+            testId: mark.pruebaId,
+            testName: mark.pruebaNombre,
+            sexo,
+            mark: mark.marcaNormalizada,
+          })
+        }
+      }
+      setDataError('')
+      return simulacroId
+    } catch {
+      setDataError('No se pudo guardar el simulacro en Firebase.')
+      throw new Error('save-simulacro-error')
+    }
+  }
+
   const handleSaveActivity = async (activityId, activity) => {
     if (!user?.uid) return
     await saveUserActivity(user.uid, activityId, activity)
@@ -259,6 +293,10 @@ function App() {
     if (currentTab === 'guia') return <GuiaPage />
     if (currentTab === 'calculadora') {
       return <CalculadoraPage profile={profile} user={user} onSaveMark={handleSaveMark} onGoProfile={handleGoProfile} />
+    }
+
+    if (currentTab === 'simulacro') {
+      return <SimulacroPage profile={profile} user={user} savedMarks={savedMarks} onSaveSimulacro={handleSaveSimulacro} onGoProfile={handleGoProfile} />
     }
 
     if (currentTab === 'calendario') {

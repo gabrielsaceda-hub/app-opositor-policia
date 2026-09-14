@@ -270,6 +270,81 @@ function getNutrition(profile) {
   }
 }
 
+// Nivel de preparación: foto honesta y explicable, sin probabilidades.
+// Cada factor muestra su estado; el nivel solo agrega lo medido.
+export function buildReadiness({ profile, weaknesses, progress, daysToExam, recovery, activities = [], wellbeing = [] }) {
+  const tests = getTestsForSelection(profile?.cuerpoObjetivo, profile?.sexo)
+  const withMarks = (weaknesses ?? []).filter((item) => item.latest)
+  const factors = []
+
+  if (!tests.length) {
+    factors.push({ id: 'marcas', label: 'Marcas registradas', status: 'nodata', detail: 'Completa sexo y cuerpo objetivo en Perfil.' })
+  } else if (!withMarks.length) {
+    factors.push({ id: 'marcas', label: 'Marcas registradas', status: 'nodata', detail: 'Sin marcas todavía. Registra al menos una para valorar.' })
+  } else {
+    const avgLost = withMarks.reduce((sum, item) => sum + (typeof item.lost === 'number' ? item.lost : 5), 0) / withMarks.length
+    factors.push({
+      id: 'marcas',
+      label: 'Marcas registradas',
+      status: avgLost > 6 ? 'malo' : avgLost > 3 ? 'regular' : 'bueno',
+      detail: `${withMarks.length}/${tests.length} pruebas con marca · pérdida media ~${(Math.round(avgLost * 10) / 10).toFixed(1)} puntos.`,
+    })
+  }
+
+  if (!progress || !progress.planned) {
+    factors.push({ id: 'adherencia', label: 'Adherencia semanal', status: 'nodata', detail: 'Sin sesiones planificadas esta semana.' })
+  } else {
+    factors.push({
+      id: 'adherencia',
+      label: 'Adherencia semanal',
+      status: progress.percent >= 80 ? 'bueno' : progress.percent >= 50 ? 'regular' : 'malo',
+      detail: `${progress.completed}/${progress.planned} sesiones (${progress.percent}%).`,
+    })
+  }
+
+  factors.push({
+    id: 'fecha',
+    label: 'Fecha de examen',
+    status: 'info',
+    detail: daysToExam === null ? 'Sin fecha definida.' : `Faltan ${daysToExam} días.`,
+  })
+
+  const worst = (weaknesses ?? [])[0]
+  if (!worst || !worst.latest || typeof worst.lost !== 'number') {
+    factors.push({ id: 'limitante', label: 'Prueba limitante', status: 'nodata', detail: 'Sin marcas para detectar la limitante.' })
+  } else {
+    factors.push({
+      id: 'limitante',
+      label: 'Prueba limitante',
+      status: worst.lost > 6 ? 'malo' : worst.lost > 3 ? 'regular' : 'bueno',
+      detail: `${worst.test.nombre}: pierdes ~${(Math.round(worst.lost * 10) / 10).toFixed(1)} puntos.`,
+    })
+  }
+
+  if (!(activities ?? []).length && !(wellbeing ?? []).length) {
+    factors.push({ id: 'carga', label: 'Carga y recuperación', status: 'nodata', detail: 'Sin registros de carga ni sueño.' })
+  } else {
+    factors.push({
+      id: 'carga',
+      label: 'Carga y recuperación',
+      status: recovery.level === 'alta' ? 'malo' : recovery.level === 'moderada' ? 'regular' : 'bueno',
+      detail: recovery.message,
+    })
+  }
+
+  const scored = factors.filter((item) => item.status === 'bueno' || item.status === 'regular' || item.status === 'malo')
+  let level = 'Sin datos'
+  if (scored.length >= 2 && withMarks.length > 0) {
+    const malos = scored.filter((item) => item.status === 'malo').length
+    const regulares = scored.filter((item) => item.status === 'regular').length
+    if (malos >= 2) level = 'Frágil'
+    else if (malos === 1 || regulares >= 2) level = 'En camino'
+    else level = 'Sólida'
+  }
+
+  return { level, factors }
+}
+
 export function buildTrainingPlan({ profile, savedMarks, activities = [], wellbeing = [] }) {
   if (!profile?.cuerpoObjetivo || !profile?.sexo) {
     return { ok: false, error: 'Completa sexo y cuerpo objetivo en Perfil para generar entrenamiento.' }
@@ -310,11 +385,14 @@ export function buildTrainingPlan({ profile, savedMarks, activities = [], wellbe
   const orderIndex = WEEK_ORDER.indexOf(todayName)
   const nextSession = weeklyPlan.find((session) => WEEK_ORDER.indexOf(session.day) > orderIndex) ?? null
 
+  const readiness = buildReadiness({ profile, weaknesses, progress, daysToExam, recovery, activities, wellbeing })
+
   return {
     ok: true,
     weeksToExam,
     daysToExam,
     examDateLabel,
+    readiness,
     phase,
     mainPriority: mainWeakness
       ? (typeof mainWeakness.lost === 'number'

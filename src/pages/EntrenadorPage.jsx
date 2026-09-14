@@ -3,6 +3,21 @@ import AppButton from '../components/ui/AppButton'
 import SectionCard from '../components/ui/SectionCard'
 import { buildTrainingPlan } from '../services/training/trainingPlanner'
 
+const readinessStyle = {
+  'Sólida': 'bg-emerald-100 text-emerald-800',
+  'En camino': 'bg-amber-100 text-amber-800',
+  'Frágil': 'bg-rose-100 text-rose-800',
+  'Sin datos': 'bg-slate-100 text-slate-600',
+}
+
+const factorMark = {
+  bueno: { symbol: '✓', className: 'text-emerald-700' },
+  regular: { symbol: '~', className: 'text-amber-700' },
+  malo: { symbol: '✗', className: 'text-rose-700' },
+  nodata: { symbol: '·', className: 'text-slate-400' },
+  info: { symbol: '·', className: 'text-slate-400' },
+}
+
 function SessionCard({ session }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -69,6 +84,22 @@ function EntrenadorPage({ profile, savedMarks, activities, wellbeing, onGoProfil
           <AppButton type="button" variant={mode === 'week' ? 'primary' : 'secondary'} onClick={() => setMode('week')}>
             Semana
           </AppButton>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Nivel de preparación" subtitle="Foto honesta según tus datos, sin predicciones">
+        <p className={`rounded-2xl px-4 py-3 text-center text-lg font-extrabold ${readinessStyle[plan.readiness.level] ?? readinessStyle['Sin datos']}`}>
+          Proyección actual: {plan.readiness.level}
+        </p>
+        <div className="mt-3 space-y-2 text-sm text-slate-700">
+          {plan.readiness.factors.map((factor) => (
+            <p key={factor.id}>
+              <strong className={factorMark[factor.status]?.className ?? 'text-slate-500'}>
+                {factorMark[factor.status]?.symbol ?? '·'} {factor.label}:
+              </strong>{' '}
+              {factor.detail}
+            </p>
+          ))}
         </div>
       </SectionCard>
 
