@@ -61,7 +61,6 @@ VITE_ADSENSE_CLIENT=ca-pub-XXXXXXXXXXXXXXXX
 VITE_ADSENSE_SLOT_TOP=1111111111
 VITE_ADSENSE_SLOT_CONTENT=2222222222
 VITE_ADSENSE_SLOT_SIDEBAR=3333333333
-VITE_STRAVA_CLIENT_ID=tu_client_id
 STRAVA_CLIENT_ID=tu_client_id
 STRAVA_CLIENT_SECRET=tu_client_secret
 STRAVA_WEBHOOK_VERIFY_TOKEN=un_token_privado_para_webhook
@@ -76,7 +75,7 @@ AI_API_URL=https://api.openai.com/v1/chat/completions
 AI_MODEL=gpt-4o-mini
 ```
 
-`VITE_*` se expone al navegador. No pongas secretos en variables `VITE_*`.
+`VITE_*` se expone al navegador. No pongas secretos en variables `VITE_*`. El client ID de Strava se mantiene también en backend para que el flujo OAuth dependa de una única configuración.
 
 Las variables sin prefijo `VITE_` son únicamente para API Routes de Vercel y se configuran en Vercel, nunca en el repositorio. `STRAVA_STATE_SECRET` puede generarse con `openssl rand -base64 32`; `STRAVA_TOKEN_ENCRYPTION_KEY` debe ser una clave base64 que decodifique exactamente 32 bytes, por ejemplo `openssl rand -base64 32`.
 

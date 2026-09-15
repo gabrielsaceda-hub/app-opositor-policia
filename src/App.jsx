@@ -237,7 +237,17 @@ function App() {
     })
     const payload = await response.json()
     if (!response.ok) throw new Error(payload.error ?? 'strava-sync-failed')
-    return payload.synced
+    return payload
+  }
+
+  const handleDisconnectStrava = async () => {
+    const token = await auth.currentUser?.getIdToken()
+    const response = await fetch('/api/strava/disconnect', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const payload = await response.json()
+    if (!response.ok) throw new Error(payload.error ?? 'strava-disconnect-failed')
   }
 
   const handleGoProfile = (context = null) => {
@@ -311,6 +321,7 @@ function App() {
           onDeleteActivity={handleDeleteActivity}
           onSaveWellbeing={handleSaveWellbeing}
           onSyncStrava={handleSyncStrava}
+          onDisconnectStrava={handleDisconnectStrava}
         />
       )
     }

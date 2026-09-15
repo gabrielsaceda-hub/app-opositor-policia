@@ -34,7 +34,7 @@ service cloud.firestore {
         'nombre', 'sexo', 'cuerpoObjetivo', 'peso', 'altura', 'edad',
         'fechaTipo', 'fechaConcreta', 'semanasAprox', 'objetivos',
         'diasEntreno', 'duracionSesion', 'experiencia', 'objetivoEntreno',
-        'material', 'lesiones', 'stravaConnected', 'updatedAt', 'lastLoginAt',
+        'material', 'lesiones', 'updatedAt', 'lastLoginAt',
         'email', 'role', 'status', 'plan', 'createdAt'
       ]) &&
         (
@@ -65,7 +65,13 @@ service cloud.firestore {
 
       match /activities/{activityId} {
         allow read: if isOwner(userId) || isAdmin();
-        allow create, update: if isOwner(userId);
+        // Strava activities are written by the backend; the client can only
+        // create manual activities or update an existing source unchanged.
+        allow create: if isOwner(userId) &&
+          (!request.resource.data.keys().hasAny(['source']) || request.resource.data.source == 'manual');
+        allow update: if isOwner(userId) &&
+          (request.resource.data.source == resource.data.source ||
+            (!resource.data.keys().hasAny(['source']) && request.resource.data.source == 'manual'));
         allow delete: if isOwner(userId) || isAdmin();
       }
 

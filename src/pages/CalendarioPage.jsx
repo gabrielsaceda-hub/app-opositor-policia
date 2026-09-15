@@ -5,6 +5,8 @@ import SectionCard from '../components/ui/SectionCard'
 import { auth } from '../services/firebase/firebaseClient'
 import { getTestsForSelection } from '../data/tests'
 import { buildTrainingPlan } from '../services/training/trainingPlanner'
+import { getActivityLoad, getActivityLoadLabel, isActivityCompleted } from '../services/training/activityLoad'
+import { getStravaMatchCandidates } from '../services/training/stravaMatching'
 
 const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 const inputClass =
@@ -19,6 +21,12 @@ function formatLocalDate(date) {
 
 function todayStr() {
   return formatLocalDate(new Date())
+}
+
+function formatPace(seconds) {
+  const value = Number(seconds)
+  if (!Number.isFinite(value) || value <= 0) return ''
+  return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}/km`
 }
 
 function getWeekDate(dayIndex) {
@@ -49,22 +57,37 @@ function loadToNumber(load) {
   return 75
 }
 
-function calculateActivityLoad(activity) {
-  const duration = Number(activity.duration) || 0
-  const rpe = Number(activity.rpe) || 5
-  return Math.round(duration * rpe)
+function isDoneActivity(activity) {
+  return isActivityCompleted(activity)
 }
 
-function isDoneActivity(activity) {
+function countsTowardLoad(activity) {
   return activity.status !== 'no-realizada'
 }
 
-function CalendarioPage({ user, profile, savedMarks = [], activities = [], wellbeing = [], onSaveActivity, onDeleteActivity, onSaveWellbeing, onSyncStrava }) {
+async function loadStravaStatus(user, setStatus) {
+  if (!user?.uid || user.isAnonymous) {
+    setStatus({ connected: false, lastSyncAt: null, status: 'disconnected' })
+    return
+  }
+  try {
+    const token = await auth.currentUser?.getIdToken()
+    const response = await fetch('/api/strava/status', { headers: { Authorization: `Bearer ${token}` } })
+    if (!response.ok) throw new Error('status-error')
+    setStatus(await response.json())
+  } catch {
+    setStatus({ connected: false, lastSyncAt: null, status: 'unknown' })
+  }
+}
+
+function CalendarioPage({ user, profile, savedMarks = [], activities = [], wellbeing = [], onSaveActivity, onDeleteActivity, onSaveWellbeing, onSyncStrava, onDisconnectStrava }) {
   const [selectedDay, setSelectedDay] = useState(null)
   const [form, setForm] = useState({ sport: 'Carrera', distance: '', duration: '', avgHr: '', rpe: '6', watts: '', status: 'completada', notes: '', testId: '' })
   const [wellbeingForm, setWellbeingForm] = useState({ date: getWeekDate(new Date().getDay() === 0 ? 6 : new Date().getDay() - 1), sleepHours: '', sleepQuality: '', fatigue: '5', soreness: '1' })
   const [message, setMessage] = useState('')
   const [stravaMessage, setStravaMessage] = useState(() => new URLSearchParams(window.location.search).get('strava') === 'connected' ? 'Strava conectado. Sincronizando actividades…' : '')
+  const [stravaStatus, setStravaStatus] = useState({ connected: false, lastSyncAt: null, status: 'disconnected' })
+  const [stravaBusy, setStravaBusy] = useState(false)
 
   const plan = useMemo(
     () => buildTrainingPlan({ profile, savedMarks, activities, wellbeing }),
@@ -76,13 +99,18 @@ function CalendarioPage({ user, profile, savedMarks = [], activities = [], wellb
   )
 
   useEffect(() => {
+    void loadStravaStatus(user, setStravaStatus)
+  }, [user])
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('strava') !== 'connected') return
     window.history.replaceState({}, '', window.location.pathname)
     Promise.resolve(onSyncStrava?.())
-      .then((count) => setStravaMessage(`Strava conectado. ${count} actividades sincronizadas.`))
+      .then((result) => setStravaMessage(`Strava conectado. ${result?.synced ?? result ?? 0} actividades sincronizadas${result?.partial ? ' (sincronización parcial; vuelve a sincronizar)' : ''}.`))
       .catch(() => setStravaMessage('Strava conectado, pero no se pudieron sincronizar las actividades.'))
-  }, [onSyncStrava])
+      .finally(() => loadStravaStatus(user, setStravaStatus))
+  }, [onSyncStrava, user])
 
   const plannedWeek = useMemo(() => {
     const today = todayStr()
@@ -106,7 +134,7 @@ function CalendarioPage({ user, profile, savedMarks = [], activities = [], wellb
     // Reubicación real: la primera sesión omitida con fecha pasada se mueve
     // al primer día de descanso disponible de la misma semana.
     const missed = week.filter((item) => item.planned && item.date < today && !item.activities.some(isDoneActivity))
-    const restDays = week.filter((item) => !item.planned && item.date >= today && !item.activities.some(isDoneActivity))
+    const restDays = week.filter((item) => !item.planned && item.date >= today && !item.activities.some(countsTowardLoad))
     let moved = null
     if (missed.length > 0 && restDays.length > 0) {
       const target = restDays[0]
@@ -118,28 +146,43 @@ function CalendarioPage({ user, profile, savedMarks = [], activities = [], wellb
     return { week, moved }
   }, [activities, plan, profile])
 
+  const stravaSuggestions = useMemo(() => activities.flatMap((activity) => (
+    getStravaMatchCandidates({
+      activity,
+      plannedWeek: plannedWeek.week,
+      plannedDuration: profile.duracionSesion,
+    }).map((item) => ({ activity, planned: item }))
+  )), [activities, plannedWeek, profile.duracionSesion])
+
+  const externalVolume = useMemo(
+    () => plannedWeek.week.reduce((sum, item) => sum + item.activities
+      .filter((activity) => activity.source === 'strava' && countsTowardLoad(activity))
+      .reduce((inner, activity) => inner + getActivityLoad(activity), 0), 0),
+    [plannedWeek],
+  )
+
   const metrics = useMemo(() => {
     const { week, moved } = plannedWeek
     const plannedLoad = week.reduce((sum, item) => sum + (item.planned?.load ?? 0), 0)
     const realLoad = week.reduce(
-      (sum, item) => sum + item.activities.filter(isDoneActivity).reduce((inner, activity) => inner + calculateActivityLoad(activity), 0),
+      (sum, item) => sum + item.activities.filter(countsTowardLoad).reduce((inner, activity) => inner + getActivityLoad(activity), 0),
       0,
     )
     const missed = week.filter((item) => item.planned && !item.activities.some(isDoneActivity)).length
     const completed = week.filter((item) => item.activities.some(isDoneActivity)).length
-    const fatigue = plannedLoad ? Math.round((realLoad / plannedLoad) * 100) : 0
+    const loadRatio = plannedLoad ? Math.round((realLoad / plannedLoad) * 100) : 0
     const recommendation =
-      fatigue > 125
-        ? 'Riesgo de sobreentrenamiento: reduce intensidad o toma descanso.'
+      loadRatio > 125
+        ? 'Carga real por encima del plan: reduce intensidad o toma descanso.'
         : moved
           ? `Carga baja: se ha reubicado la sesión de ${moved.from} en ${moved.to}.`
-          : fatigue < 65 && missed > 0
+          : loadRatio < 65 && missed > 0
             ? 'Carga baja: completa alguna sesión pendiente sin forzar máximos.'
             : completed >= 3
               ? 'Semana equilibrada: mantén recuperación y técnica.'
               : 'Empieza completando las sesiones clave sin forzar máximos.'
 
-    return { plannedLoad, realLoad, missed, completed, fatigue, recommendation, moved }
+    return { plannedLoad, realLoad, missed, completed, loadRatio, recommendation, moved }
   }, [plannedWeek])
 
   const findFreeActivityId = (date) => {
@@ -186,7 +229,14 @@ function CalendarioPage({ user, profile, savedMarks = [], activities = [], wellb
       return
     }
     try {
-      await onSaveActivity(selectedDay.activityId, { ...form, day: selectedDay.day, date: selectedDay.date, source: 'manual' })
+      const existing = activities.find((item) => item.id === selectedDay.activityId)
+      await onSaveActivity(selectedDay.activityId, {
+        ...form,
+        day: selectedDay.day,
+        date: selectedDay.date,
+        source: existing?.source === 'strava' ? 'strava' : 'manual',
+        planningMatchStatus: existing?.planningMatchStatus ?? '',
+      })
       setMessage(form.status === 'no-realizada' ? 'Sesión marcada como no realizada.' : 'Actividad guardada en tu cuenta.')
     } catch {
       setMessage('No se pudo guardar la actividad. Revisa Firebase e inténtalo de nuevo.')
@@ -227,6 +277,7 @@ function CalendarioPage({ user, profile, savedMarks = [], activities = [], wellb
       return
     }
     try {
+      setStravaBusy(true)
       const token = await auth.currentUser?.getIdToken()
       const result = await fetch('/api/strava/start', { headers: { Authorization: `Bearer ${token}` } })
       const payload = await result.json()
@@ -234,12 +285,64 @@ function CalendarioPage({ user, profile, savedMarks = [], activities = [], wellb
       window.location.href = payload.url
     } catch {
       setStravaMessage('No se pudo iniciar la conexión con Strava. Revisa la configuración.')
+    } finally {
+      setStravaBusy(false)
     }
   }
 
   const syncStrava = async () => {
-    const count = await onSyncStrava?.()
-    setStravaMessage(`Sincronización completada: ${count ?? 0} actividades.`)
+    if (!stravaStatus.connected) {
+      setStravaMessage('Conecta Strava antes de sincronizar.')
+      return
+    }
+    try {
+      setStravaBusy(true)
+      const result = await onSyncStrava?.()
+      setStravaMessage(`Sincronización completada: ${result?.synced ?? result ?? 0} actividades${result?.partial ? ' (parcial; vuelve a sincronizar)' : ''}.`)
+      await loadStravaStatus(user, setStravaStatus)
+    } catch {
+      setStravaMessage('No se pudo sincronizar Strava. Revisa la conexión e inténtalo de nuevo.')
+    } finally {
+      setStravaBusy(false)
+    }
+  }
+
+  const disconnectStrava = async () => {
+    try {
+      setStravaBusy(true)
+      await onDisconnectStrava?.()
+      setStravaStatus({ connected: false, lastSyncAt: null, status: 'disconnected' })
+      setStravaMessage('Strava desconectado. Las actividades importadas se conservan en tu calendario.')
+    } catch {
+      setStravaMessage('No se pudo desconectar Strava. Inténtalo de nuevo.')
+    } finally {
+      setStravaBusy(false)
+    }
+  }
+
+  const confirmStravaMatch = async ({ activity, planned }) => {
+    try {
+      await onSaveActivity(activity.id, {
+        ...activity,
+        status: 'completada',
+        source: 'strava',
+        planningMatchStatus: 'confirmed',
+        matchedSessionDate: planned.date,
+        matchedSessionTitle: planned.planned.title,
+      })
+      setMessage(`Actividad vinculada a la sesión de ${planned.day}.`)
+    } catch {
+      setMessage('No se pudo confirmar la coincidencia.')
+    }
+  }
+
+  const rejectStravaMatch = async ({ activity }) => {
+    try {
+      await onSaveActivity(activity.id, { ...activity, status: 'importada', source: 'strava', planningMatchStatus: 'rejected' })
+      setMessage('La actividad se mantiene como volumen externo sin vincular.')
+    } catch {
+      setMessage('No se pudo descartar la sugerencia.')
+    }
   }
 
   const today = todayStr()
@@ -248,8 +351,11 @@ function CalendarioPage({ user, profile, savedMarks = [], activities = [], wellb
     <div className="space-y-4">
       <SectionCard title="Calendario inteligente" subtitle="Plan semanal, Strava y registro manual">
         <div className="grid gap-3 sm:grid-cols-2">
-          <AppButton type="button" onClick={connectStrava}>Conectar con Strava</AppButton>
-          <AppButton type="button" variant="secondary" onClick={syncStrava}>Sincronizar Strava</AppButton>
+          <AppButton type="button" onClick={connectStrava} disabled={stravaBusy || stravaStatus.connected}>
+            {stravaStatus.connected ? 'Strava conectado' : 'Conectar con Strava'}
+          </AppButton>
+          <AppButton type="button" variant="secondary" onClick={syncStrava} disabled={stravaBusy || !stravaStatus.connected}>Sincronizar Strava</AppButton>
+          {stravaStatus.status !== 'disconnected' && stravaStatus.status !== 'unknown' ? <AppButton type="button" variant="secondary" onClick={disconnectStrava} disabled={stravaBusy}>Desconectar Strava</AppButton> : null}
           <AppButton type="button" variant="secondary" onClick={() => {
             const index = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1
             openDay(plannedWeek.week[index])
@@ -258,16 +364,37 @@ function CalendarioPage({ user, profile, savedMarks = [], activities = [], wellb
           </AppButton>
         </div>
         {stravaMessage ? <p className="mt-3 rounded-xl bg-brand-50 p-3 text-sm font-semibold text-brand-900">{stravaMessage}</p> : null}
+        <p className="mt-3 text-xs text-slate-500">
+          Estado: {stravaStatus.connected ? 'conectado' : stravaStatus.status === 'reauthorization_required' ? 'requiere volver a autorizar' : 'no conectado'}{stravaStatus.lastSyncAt ? ` · última sincronización ${stravaStatus.lastSyncAt}` : ''}
+        </p>
       </SectionCard>
+
+      {stravaSuggestions.length > 0 ? (
+        <SectionCard title="Revisión de Strava" subtitle="La aplicación no da por realizada una sesión sin tu confirmación">
+          <div className="space-y-3">
+            {stravaSuggestions.map(({ activity, planned }) => (
+              <article key={`${activity.id}-${planned.date}`} className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-slate-700">
+                <p><strong>Posible coincidencia:</strong> {activity.sport} · {activity.duration} min el {activity.date}</p>
+                <p>Sesión planificada: <strong>{planned.planned.title}</strong> ({planned.day})</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <AppButton type="button" onClick={() => confirmStravaMatch({ activity, planned })}>Confirmar</AppButton>
+                  <AppButton type="button" variant="secondary" onClick={() => rejectStravaMatch({ activity })}>No vincular</AppButton>
+                </div>
+              </article>
+            ))}
+          </div>
+        </SectionCard>
+      ) : null}
 
       <SectionCard title="Carga y fatiga" subtitle="Estimación simple en tiempo real">
         <div className="grid grid-cols-2 gap-3 text-sm text-slate-700 sm:grid-cols-4">
           <p className="rounded-2xl bg-slate-50 p-3"><strong>Plan:</strong> {metrics.plannedLoad}</p>
           <p className="rounded-2xl bg-slate-50 p-3"><strong>Real:</strong> {metrics.realLoad}</p>
-          <p className="rounded-2xl bg-slate-50 p-3"><strong>Fatiga:</strong> {metrics.fatigue}%</p>
+          <p className="rounded-2xl bg-slate-50 p-3"><strong>Real/plan:</strong> {metrics.loadRatio}%</p>
           <p className="rounded-2xl bg-slate-50 p-3"><strong>Hechas:</strong> {metrics.completed}</p>
         </div>
         <p className="mt-3 rounded-2xl bg-brand-50 p-3 text-sm font-bold text-brand-900">{metrics.recommendation}</p>
+        <p className="mt-3 text-xs text-slate-500">Strava esta semana: {externalVolume} min de volumen externo. No se interpreta como RPE ni fatiga fisiológica.</p>
       </SectionCard>
 
       <SectionCard title="Sueño y bienestar" subtitle="Registra tu recuperación para contextualizar la carga">
@@ -317,8 +444,13 @@ function CalendarioPage({ user, profile, savedMarks = [], activities = [], wellb
               ) : (
                 item.activities.map((activity) => (
                   <p key={activity.id}>
-                    Real: {activity.sport} · {activity.duration} min · RPE {activity.rpe}
+                    Real: {activity.sport} · {activity.duration} min{activity.source === 'strava' ? ` · ${getActivityLoadLabel(activity)}` : ` · RPE ${activity.rpe}`}
+                    {activity.source === 'strava' && activity.distance ? ` · ${activity.distance} km` : ''}
+                    {activity.source === 'strava' && activity.paceSecondsPerKm ? ` · ritmo ${formatPace(activity.paceSecondsPerKm)}` : ''}
+                    {activity.source === 'strava' && Number(activity.elevationGainMeters) > 0 ? ` · +${Math.round(activity.elevationGainMeters)} m` : ''}
+                    {activity.source === 'strava' && activity.avgHr ? ` · FC ${activity.avgHr}` : ''}
                     {activity.status === 'no-realizada' ? ' (no realizada)' : ''}
+                    {activity.source === 'strava' && activity.planningMatchStatus !== 'confirmed' ? ' · revisión pendiente' : ''}
                   </p>
                 ))
               )}

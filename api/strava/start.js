@@ -1,5 +1,5 @@
 import { requireUser } from '../_lib/auth.js'
-import { signState } from '../_lib/strava.js'
+import { createState, getAppOrigin } from '../_lib/strava.js'
 
 export default async function handler(request, response) {
   if (request.method !== 'GET') {
@@ -12,20 +12,29 @@ export default async function handler(request, response) {
     response.status(403).json({ error: 'Google account required for Strava' })
     return
   }
-  const clientId = process.env.STRAVA_CLIENT_ID || process.env.VITE_STRAVA_CLIENT_ID
+  const clientId = process.env.STRAVA_CLIENT_ID
   if (!clientId) {
     response.status(503).json({ error: 'Strava is not configured' })
     return
   }
-  const origin = process.env.APP_ORIGIN || `https://${request.headers.host}`
+  let origin
+  try {
+    origin = getAppOrigin()
+  } catch {
+    response.status(503).json({ error: 'Strava origin is not configured' })
+    return
+  }
   const redirectUri = `${origin}/api/strava/callback`
+  const { state, nonce } = createState(user.uid)
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
     approval_prompt: 'auto',
-    scope: 'read,activity:read_all',
-    state: signState(user.uid),
+    scope: 'activity:read_all',
+    state,
   })
+  const secureCookie = origin.startsWith('https://') ? '; Secure' : ''
+  response.setHeader('Set-Cookie', `strava_oauth_state=${nonce}; Max-Age=600; Path=/api/strava/callback; HttpOnly; SameSite=Lax${secureCookie}`)
   response.status(200).json({ url: `https://www.strava.com/oauth/authorize?${params.toString()}` })
 }

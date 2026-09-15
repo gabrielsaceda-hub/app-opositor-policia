@@ -1,5 +1,6 @@
 import { getTestsForSelection } from '../../data/tests'
 import { getResultadoByBody } from '../calculator/getResultadoByBody'
+import { getActivityLoad, isActivityCompleted } from './activityLoad'
 
 const defaultDays = ['Lunes', 'Miércoles', 'Viernes']
 const WEEK_ORDER = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
@@ -211,7 +212,7 @@ function getRecentLoad(activities) {
   return (activities ?? []).reduce((sum, activity) => {
     const date = activity.date ? new Date(`${activity.date}T23:59:59`) : null
     const recent = date && !Number.isNaN(date.getTime()) && Date.now() - date.getTime() <= 7 * 24 * 60 * 60 * 1000
-    return recent ? sum + (Number(activity.duration) || 0) * (Number(activity.rpe) || 0) : sum
+    return recent ? sum + getActivityLoad(activity) : sum
   }, 0)
 }
 
@@ -373,8 +374,8 @@ export function buildTrainingPlan({ profile, savedMarks, activities = [], wellbe
   const weekDates = getCurrentWeekDates()
   const todayName = getTodayName()
   const doneDays = new Set(
-    (activities ?? [])
-      .filter((activity) => activity.date && activity.status !== 'no-realizada')
+      (activities ?? [])
+      .filter((activity) => activity.date && isActivityCompleted(activity))
       .map((activity) => activity.date),
   )
   const progress = {

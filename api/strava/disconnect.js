@@ -1,5 +1,5 @@
 import { requireUser } from '../_lib/auth.js'
-import { syncActivities } from '../_lib/strava.js'
+import { disconnectStrava } from '../_lib/strava.js'
 
 export default async function handler(request, response) {
   if (request.method !== 'POST') {
@@ -13,10 +13,9 @@ export default async function handler(request, response) {
     return
   }
   try {
-    const result = await syncActivities(user.uid)
-    response.status(200).json(result)
+    await disconnectStrava(user.uid)
+    response.status(200).json({ disconnected: true, activitiesPreserved: true })
   } catch (error) {
-    const status = error?.message === 'strava-not-connected' ? 409 : 502
-    response.status(status).json({ error: error?.message ?? 'Strava sync failed' })
+    response.status(502).json({ error: error?.message === 'strava-not-connected' ? error.message : 'Could not disconnect Strava' })
   }
 }

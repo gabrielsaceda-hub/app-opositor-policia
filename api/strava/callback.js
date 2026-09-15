@@ -1,5 +1,11 @@
 import { exchangeCode, saveConnection, verifyState } from '../_lib/strava.js'
 
+function getCookie(request, name) {
+  const cookies = String(request.headers?.cookie ?? '').split(';')
+  const entry = cookies.find((item) => item.trim().startsWith(`${name}=`))
+  return entry ? decodeURIComponent(entry.trim().slice(name.length + 1)) : ''
+}
+
 export default async function handler(request, response) {
   if (request.method !== 'GET') {
     response.status(405).json({ error: 'Method not allowed' })
@@ -8,7 +14,7 @@ export default async function handler(request, response) {
 
   const { code, error, state } = request.query
   if (error) {
-    response.status(400).send(`Strava OAuth error: ${error}`)
+    response.status(400).send('Strava authorization was not completed')
     return
   }
 
@@ -23,12 +29,15 @@ export default async function handler(request, response) {
   }
 
   try {
-    const { uid } = verifyState(state)
+    const parsedState = verifyState(state)
+    if (getCookie(request, 'strava_oauth_state') !== parsedState.nonce) throw new Error('invalid-state')
+    response.setHeader('Set-Cookie', 'strava_oauth_state=; Max-Age=0; Path=/api/strava/callback; HttpOnly; SameSite=Lax')
     const tokenData = await exchangeCode(code)
-    await saveConnection(uid, tokenData)
+    await saveConnection(parsedState.uid, tokenData)
     response.redirect(302, '/calendario?strava=connected')
   } catch (error) {
-    response.status(502).send(`Could not complete Strava connection: ${error?.message ?? 'unknown error'}`)
+    console.error('Strava OAuth callback failed', error)
+    response.status(502).send('Could not complete Strava connection')
     return
   }
 }

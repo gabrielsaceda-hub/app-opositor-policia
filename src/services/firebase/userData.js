@@ -125,6 +125,12 @@ export function subscribeUserActivities(uid, onChange) {
 }
 
 export async function saveUserActivity(uid, activityId, activity) {
+  const source = activity.source === 'strava' ? 'strava' : 'manual'
+  const status = source === 'strava' && activity.status === 'importada'
+    ? 'importada'
+    : activity.status === 'no-realizada'
+      ? 'no-realizada'
+      : 'completada'
   await setDoc(doc(db, 'users', uid, 'activities', activityId), {
     sport: String(activity.sport ?? '').slice(0, 40),
     distance: String(activity.distance ?? '').slice(0, 20),
@@ -134,10 +140,15 @@ export async function saveUserActivity(uid, activityId, activity) {
     watts: String(activity.watts ?? '').slice(0, 20),
     day: String(activity.day ?? '').slice(0, 20),
     date: String(activity.date ?? '').slice(0, 10),
-    status: activity.status === 'no-realizada' ? 'no-realizada' : 'completada',
+    status,
     notes: String(activity.notes ?? '').slice(0, 500),
     testId: String(activity.testId ?? '').slice(0, 40),
-    source: activity.source === 'strava' ? 'strava' : 'manual',
+    source,
+    planningMatchStatus: ['confirmed', 'rejected', 'unreviewed'].includes(activity.planningMatchStatus)
+      ? activity.planningMatchStatus
+      : '',
+    matchedSessionDate: String(activity.matchedSessionDate ?? '').slice(0, 10),
+    matchedSessionTitle: String(activity.matchedSessionTitle ?? '').slice(0, 120),
     updatedAt: serverTimestamp(),
   }, { merge: true })
 }
