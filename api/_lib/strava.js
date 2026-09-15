@@ -51,6 +51,14 @@ export function encryptToken(token) {
   return `${iv.toString('base64url')}.${cipher.getAuthTag().toString('base64url')}.${encrypted.toString('base64url')}`
 }
 
+async function requestToken(params) {
+  return fetch('https://www.strava.com/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(params),
+  })
+}
+
 export function decryptToken(value) {
   const [ivRaw, tagRaw, encryptedRaw] = String(value ?? '').split('.')
   const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey(), Buffer.from(ivRaw, 'base64url'))
@@ -59,15 +67,11 @@ export function decryptToken(value) {
 }
 
 export async function exchangeCode(code) {
-  const response = await fetch('https://www.strava.com/oauth/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id: requireEnv('STRAVA_CLIENT_ID'),
-      client_secret: requireEnv('STRAVA_CLIENT_SECRET'),
-      code,
-      grant_type: 'authorization_code',
-    }),
+  const response = await requestToken({
+    client_id: requireEnv('STRAVA_CLIENT_ID'),
+    client_secret: requireEnv('STRAVA_CLIENT_SECRET'),
+    code,
+    grant_type: 'authorization_code',
   })
   if (!response.ok) throw new Error(`strava-token-exchange-${response.status}`)
   return response.json()
@@ -102,15 +106,11 @@ export async function getAccessToken(uid) {
   const connection = snapshot.data()
   if (Number(connection.expiresAt) > Math.floor(Date.now() / 1000) + 3600) return decryptToken(connection.accessToken)
 
-  const response = await fetch('https://www.strava.com/oauth/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id: requireEnv('STRAVA_CLIENT_ID'),
-      client_secret: requireEnv('STRAVA_CLIENT_SECRET'),
-      grant_type: 'refresh_token',
-      refresh_token: decryptToken(connection.refreshToken),
-    }),
+  const response = await requestToken({
+    client_id: requireEnv('STRAVA_CLIENT_ID'),
+    client_secret: requireEnv('STRAVA_CLIENT_SECRET'),
+    grant_type: 'refresh_token',
+    refresh_token: decryptToken(connection.refreshToken),
   })
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) await markStravaNeedsReconnect(uid, `strava-refresh-${response.status}`)

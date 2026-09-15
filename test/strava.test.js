@@ -38,3 +38,22 @@ test('OAuth state incluye nonce verificable y caducidad', async () => {
   assert.equal(parsed.uid, 'user-1')
   assert.equal(parsed.nonce, created.nonce)
 })
+
+test('intercambio OAuth usa formulario compatible con Strava', async () => {
+  globalThis.process.env.STRAVA_CLIENT_ID = 'test-client'
+  globalThis.process.env.STRAVA_CLIENT_SECRET = 'test-secret'
+  const { exchangeCode } = await import('../api/_lib/strava.js')
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, 'https://www.strava.com/oauth/token')
+    assert.equal(options.headers['Content-Type'], 'application/x-www-form-urlencoded')
+    assert.equal(options.body.get('grant_type'), 'authorization_code')
+    assert.equal(options.body.get('code'), 'test-code')
+    return { ok: true, json: async () => ({}) }
+  }
+  try {
+    await exchangeCode('test-code')
+  } finally {
+    globalThis.fetch = previousFetch
+  }
+})
